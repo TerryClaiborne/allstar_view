@@ -1,0 +1,45 @@
+allstar_view/
+|-- api/
+|   |-- downstream.php
+|   |-- echolink.php
+|   `-- local.php
+|-- app/
+|   `-- Support/
+|       |-- AppAuth.php
+|       |-- AppCsrf.php
+|       |-- AppSession.php
+|       `-- Config.php
+|-- bin/
+|   `-- allstar-view-read.sh
+|-- cache/
+|   |-- echolink/
+|   |   `-- .gitkeep
+|   `-- stats/
+|       `-- .gitkeep
+|-- logs/
+|   `-- .gitkeep
+|-- public/
+|   |-- assets/
+|   |   |-- allstar-view.css
+|   |   |-- allstar-view.js
+|   |   |-- app-shell.css
+|   |   |-- audio-alerts.js
+|   |   `-- header.js
+|   |-- index.php
+|   |-- login.php
+|   `-- logout.php
+|-- run/
+|   `-- .gitkeep
+|-- src/
+|   |-- CacheMaintenance.php
+|   |-- Downstream.php
+|   |-- EchoLink.php
+|   |-- Monitor.php
+|   `-- NodeIdentity.php
+|-- .gitignore
+|-- config.ini.example
+|-- README.md
+|-- screenshot-light.png
+|-- screenshot.png
+|-- setup_allstar_view.sh
+`-- VERSION
