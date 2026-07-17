@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 APP_DIR="/var/www/html/allstar_view"
 WEB_USER="www-data"
 WEB_GROUP="www-data"
@@ -35,6 +35,42 @@ fail(){ echo "[ERROR] $*" >&2; exit 1; }
 [[ ${EUID} -eq 0 ]] || fail "Run this script as root."
 [[ -d "$APP_DIR" ]] || fail "Application directory not found: $APP_DIR"
 : > "$QUIET_LOG"; chmod 0600 "$QUIET_LOG" 2>/dev/null || true
+
+on_error() {
+    local exit_code="$?"
+    local line_no="${1:-unknown}"
+
+    trap - ERR
+
+    echo "[ERROR] AllStar View setup failed near line ${line_no} (exit ${exit_code})." >&2
+    if [[ -s "$QUIET_LOG" ]]; then
+        echo "[ERROR] Last setup log lines:" >&2
+        tail -n 60 "$QUIET_LOG" >&2 || true
+    fi
+    exit "$exit_code"
+}
+
+trap 'on_error $LINENO' ERR
+
+run_quiet_command() {
+    local label="$1"
+    shift
+
+    {
+        echo
+        echo "===== ${label} ====="
+        printf 'Command:'
+        printf ' %q' "$@"
+        echo
+    } >> "$QUIET_LOG"
+
+    if ! "$@" >> "$QUIET_LOG" 2>&1; then
+        echo "[ERROR] ${label} failed." >&2
+        echo "[ERROR] Last setup log lines:" >&2
+        tail -n 60 "$QUIET_LOG" >&2 || true
+        exit 1
+    fi
+}
 
 required=(
     VERSION config.ini.example setup_allstar_view.sh
@@ -147,12 +183,48 @@ if [[ "$ACTION" == "disable-auth" ]]; then
     exit 0
 fi
 
-if [[ "$SKIP_APT" != "1" ]] && command -v apt-get >/dev/null 2>&1; then
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update >>"$QUIET_LOG" 2>&1
-    apt-get install -y apache2 php php-cli php-curl sudo ca-certificates >>"$QUIET_LOG" 2>&1
+missing_packages=()
+
+add_missing_package() {
+    local package="$1"
+    local existing
+
+    for existing in "${missing_packages[@]}"; do
+        [[ "$existing" == "$package" ]] && return 0
+    done
+    missing_packages+=("$package")
+}
+
+command -v apache2ctl >/dev/null 2>&1 || add_missing_package apache2
+command -v a2enconf   >/dev/null 2>&1 || add_missing_package apache2
+command -v a2disconf  >/dev/null 2>&1 || add_missing_package apache2
+
+if ! command -v php >/dev/null 2>&1; then
+    add_missing_package php
+    add_missing_package php-cli
+    add_missing_package php-curl
+elif ! php -r 'exit(extension_loaded("curl") ? 0 : 1);' >/dev/null 2>&1; then
+    add_missing_package php-curl
 fi
-for cmd in php sudo visudo apache2ctl a2enconf a2disconf systemctl; do command -v "$cmd" >/dev/null 2>&1 || fail "$cmd is not installed or not in PATH."; done
+
+command -v sudo   >/dev/null 2>&1 || add_missing_package sudo
+command -v visudo >/dev/null 2>&1 || add_missing_package sudo
+[[ -r /etc/ssl/certs/ca-certificates.crt ]] || add_missing_package ca-certificates
+
+if (( ${#missing_packages[@]} > 0 )); then
+    [[ "$SKIP_APT" != "1" ]] || fail "Required packages are missing while ALLSTAR_VIEW_SKIP_APT=1 is set: ${missing_packages[*]}"
+    command -v apt-get >/dev/null 2>&1 || fail "Required packages are missing, but apt-get is unavailable: ${missing_packages[*]}"
+
+    export DEBIAN_FRONTEND=noninteractive
+    run_quiet_command "apt package index update" apt-get update
+    run_quiet_command "apt package installation" apt-get install -y "${missing_packages[@]}"
+fi
+
+for cmd in php sudo visudo apache2ctl a2enconf a2disconf systemctl; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "$cmd is not installed or not in PATH."
+done
+php -r 'exit(extension_loaded("curl") ? 0 : 1);' >/dev/null 2>&1 || fail "PHP cURL extension is not installed or enabled."
+[[ -r /etc/ssl/certs/ca-certificates.crt ]] || fail "CA certificate bundle is missing: /etc/ssl/certs/ca-certificates.crt"
 [[ -x /usr/bin/timeout ]] || fail "/usr/bin/timeout is required."
 [[ -x /usr/sbin/asterisk ]] || fail "Asterisk was not found at /usr/sbin/asterisk."
 id "$WEB_USER" >/dev/null 2>&1 || fail "Web user does not exist: $WEB_USER"
