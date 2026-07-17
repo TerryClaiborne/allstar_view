@@ -202,9 +202,6 @@ command -v a2disconf  >/dev/null 2>&1 || add_missing_package apache2
 if ! command -v php >/dev/null 2>&1; then
     add_missing_package php
     add_missing_package php-cli
-    add_missing_package php-curl
-elif ! php -r 'exit(extension_loaded("curl") ? 0 : 1);' >/dev/null 2>&1; then
-    add_missing_package php-curl
 fi
 
 command -v sudo   >/dev/null 2>&1 || add_missing_package sudo
@@ -223,7 +220,6 @@ fi
 for cmd in php sudo visudo apache2ctl a2enconf a2disconf systemctl; do
     command -v "$cmd" >/dev/null 2>&1 || fail "$cmd is not installed or not in PATH."
 done
-php -r 'exit(extension_loaded("curl") ? 0 : 1);' >/dev/null 2>&1 || fail "PHP cURL extension is not installed or enabled."
 [[ -r /etc/ssl/certs/ca-certificates.crt ]] || fail "CA certificate bundle is missing: /etc/ssl/certs/ca-certificates.crt"
 [[ -x /usr/bin/timeout ]] || fail "/usr/bin/timeout is required."
 [[ -x /usr/sbin/asterisk ]] || fail "Asterisk was not found at /usr/sbin/asterisk."
