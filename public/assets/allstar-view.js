@@ -9,6 +9,8 @@
     const localEndpoint = String(page.dataset.statusEndpoint || '').trim();
     const downstreamEndpoint = String(page.dataset.downstreamEndpoint || '').trim();
     const echoLinkEndpoint = String(page.dataset.echolinkEndpoint || '').trim();
+    const mobileActivityMedia = window.matchMedia('(max-width: 760px)');
+    const MOBILE_ACTIVITY_LIMIT = 8;
     if (!localEndpoint) {
         return;
     }
@@ -41,6 +43,7 @@
         detailStats: document.getElementById('allstar-view-detail-stats'),
         detailQrz: document.getElementById('allstar-view-detail-qrz'),
         activity: document.getElementById('allstar-view-activity'),
+        activityToggle: document.getElementById('allstar-view-activity-toggle'),
     };
 
     const state = {
@@ -62,6 +65,7 @@
         connections: [],
         activity: [],
         activityRenderSignature: '',
+        activityExpanded: false,
         downstreamRenderSignature: '',
         downstreamNodes: [],
         downstreamDirect: [],
@@ -439,16 +443,32 @@
 
     function activityRenderSignature() {
         const selected = state.selectedType === 'activity' ? state.selectedKey : '';
-        return [selected, ...state.activity.map((event) => [
-            activityEventKey(event),
-            event.type,
-            event.node,
-            event.callsign,
-            event.description,
-            event.source,
-            event.timestamp,
-            event.duration_seconds,
-        ].map((value) => String(value || '')).join('|'))].join('~');
+        return [
+            selected,
+            mobileActivityMedia.matches ? 'mobile' : 'desktop',
+            state.activityExpanded ? 'expanded' : 'recent',
+            ...state.activity.map((event) => [
+                activityEventKey(event),
+                event.type,
+                event.node,
+                event.callsign,
+                event.description,
+                event.source,
+                event.timestamp,
+                event.duration_seconds,
+            ].map((value) => String(value || '')).join('|')),
+        ].join('~');
+    }
+
+    function updateActivityActions() {
+        const mobileLimited = mobileActivityMedia.matches && state.activity.length > MOBILE_ACTIVITY_LIMIT;
+
+        if (elements.activityToggle) {
+            elements.activityToggle.hidden = !mobileLimited;
+            elements.activityToggle.textContent = state.activityExpanded ? 'Show Recent' : 'Show All';
+            elements.activityToggle.setAttribute('aria-expanded', state.activityExpanded ? 'true' : 'false');
+        }
+
     }
 
     function renderActivity() {
@@ -462,6 +482,8 @@
         }
         state.activityRenderSignature = signature;
 
+        updateActivityActions();
+
         if (!state.activity.length) {
             elements.activity.innerHTML = `
                 <div class="allstar-view-empty allstar-view-empty-compact">
@@ -473,7 +495,11 @@
             return;
         }
 
-        elements.activity.innerHTML = state.activity.map((event) => {
+        const visibleActivity = mobileActivityMedia.matches && !state.activityExpanded
+            ? state.activity.slice(0, MOBILE_ACTIVITY_LIMIT)
+            : state.activity;
+
+        elements.activity.innerHTML = visibleActivity.map((event) => {
             const identity = activityIdentity(event);
             const eventKey = activityEventKey(event);
             const selected = state.selectedType === 'activity' && state.selectedKey === eventKey ? ' is-selected' : '';
@@ -502,6 +528,26 @@
             selectActivity(activity);
         }
     });
+
+    elements.activityToggle?.addEventListener('click', () => {
+        state.activityExpanded = !state.activityExpanded;
+        state.activityRenderSignature = '';
+        renderActivity();
+    });
+
+    const handleActivityViewportChange = () => {
+        if (!mobileActivityMedia.matches) {
+            state.activityExpanded = false;
+        }
+        state.activityRenderSignature = '';
+        renderActivity();
+    };
+
+    if (typeof mobileActivityMedia.addEventListener === 'function') {
+        mobileActivityMedia.addEventListener('change', handleActivityViewportChange);
+    } else if (typeof mobileActivityMedia.addListener === 'function') {
+        mobileActivityMedia.addListener(handleActivityViewportChange);
+    }
 
     function downstreamCategory(item) {
         if (isDownstreamWebPhoneClient(item)) return 'clients';
@@ -1037,7 +1083,8 @@
         const summary = snapshot.summary && typeof snapshot.summary === 'object' ? snapshot.summary : {};
         state.localNode = String(snapshot.node || state.localNode || '').trim();
         state.connections = connections.map(applyEchoLinkIdentity);
-        state.activity = (Array.isArray(snapshot.activity) ? snapshot.activity : []).map((item) => String(item?.kind || '') === 'echo' ? applyEchoLinkIdentity(item) : item);
+        state.activity = (Array.isArray(snapshot.activity) ? snapshot.activity : [])
+            .map((item) => String(item?.kind || '') === 'echo' ? applyEchoLinkIdentity(item) : item);
         window.dispatchEvent(new CustomEvent('allstar_view:connections', { detail: state.connections }));
 
         if (state.selectedType === 'current' && !state.connections.some((item) => item.key === state.selectedKey)) {

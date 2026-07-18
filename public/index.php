@@ -26,6 +26,9 @@ $repoUrl = 'https://github.com/TerryClaiborne/allstar_view';
 $remoteVersionUrl = 'https://raw.githubusercontent.com/TerryClaiborne/allstar_view/main/VERSION';
 $localVersion = is_readable($root . '/VERSION') ? trim((string) file_get_contents($root . '/VERSION')) : '0.0.0';
 $localVersion = $localVersion !== '' ? $localVersion : '0.0.0';
+$myNode = trim($config->getString('MYNODE', ''));
+$myNodeIsValid = preg_match('/^[0-9]+$/', $myNode) === 1;
+$myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawurlencode($myNode) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -91,7 +94,13 @@ $localVersion = $localVersion !== '' ? $localVersion : '0.0.0';
         <div class="auth-https-warning">Web login is enabled, but this page is not using HTTPS. Use HTTPS or a VPN before allowing outside access.</div>
     <?php endif; ?>
 
-    <main class="allstar-view-page" aria-labelledby="allstar-view-title" data-status-endpoint="/allstar_view/api/local.php" data-downstream-endpoint="/allstar_view/api/downstream.php" data-echolink-endpoint="/allstar_view/api/echolink.php">
+    <main
+        class="allstar-view-page"
+        aria-labelledby="allstar-view-title"
+        data-status-endpoint="/allstar_view/api/local.php"
+        data-downstream-endpoint="/allstar_view/api/downstream.php"
+        data-echolink-endpoint="/allstar_view/api/echolink.php"
+    >
         <h2 id="allstar-view-title" class="sr-only">AllStar View</h2>
 
         <section class="allstar-view-summary" aria-label="AllStar View summary">
@@ -121,7 +130,18 @@ $localVersion = $localVersion !== '' ? $localVersion : '0.0.0';
             <article class="card allstar-view-card allstar-view-card-connections">
                 <div class="card-header">
                     <span>Current Connections</span>
-                    <span class="meta-line">Direct and local</span>
+                    <?php if ($myNodeIsValid): ?>
+                        <a
+                            class="allstar-view-local-node-pill"
+                            href="<?= e($myNodeStatsUrl) ?>"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open AllStarLink Stats for node <?= e($myNode) ?>"
+                            aria-label="Open AllStarLink Stats for node <?= e($myNode) ?>"
+                        >Node <?= e($myNode) ?></a>
+                    <?php else: ?>
+                        <span class="meta-line">Node not set</span>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body">
                     <div class="allstar-view-legend" aria-label="Connection colors">
@@ -180,11 +200,16 @@ $localVersion = $localVersion !== '' ? $localVersion : '0.0.0';
                     <span class="meta-line">Newest first · saved locally</span>
                 </div>
                 <div class="card-body">
-                    <div class="allstar-view-activity-legend">
-                        <span class="activity-key">Key</span>
-                        <span class="activity-unkey">Unkey</span>
-                        <span class="activity-connect">Connect</span>
-                        <span class="activity-disconnect">Disconnect</span>
+                    <div class="allstar-view-activity-toolbar">
+                        <div class="allstar-view-activity-legend" aria-label="Activity colors">
+                            <span class="activity-key">Key</span>
+                            <span class="activity-unkey">Unkey</span>
+                            <span class="activity-connect">Connect</span>
+                            <span class="activity-disconnect">Disconnect</span>
+                        </div>
+                        <div class="allstar-view-activity-actions">
+                            <button type="button" class="allstar-view-activity-action allstar-view-activity-toggle" id="allstar-view-activity-toggle" hidden>Show All</button>
+                        </div>
                     </div>
                     <div id="allstar-view-activity" class="allstar-view-activity-list allstar-view-scroll-panel" aria-live="polite" tabindex="0">
                         <div class="allstar-view-empty allstar-view-empty-compact">

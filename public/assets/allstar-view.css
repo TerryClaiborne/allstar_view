@@ -4,6 +4,46 @@
     margin-bottom: 14px;
 }
 
+/* Clickable local-node pill in the Current Connections header. */
+.allstar-view-local-node-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 23px;
+    padding: 0 9px;
+    color: #ffffff;
+    background: rgba(216, 108, 242, 0.14);
+    border: 1px solid rgba(236, 122, 255, 0.82);
+    border-radius: 999px;
+    font-size: 0.67rem;
+    font-weight: 800;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.allstar-view-local-node-pill:hover,
+.allstar-view-local-node-pill:focus-visible {
+    color: #ffffff;
+    background: rgba(216, 108, 242, 0.25);
+    border-color: #f09cff;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(240, 156, 255, 0.20);
+}
+
+html[data-theme="light"] .allstar-view-local-node-pill {
+    color: #6f207d;
+    background: #f8eefe;
+    border-color: #b86bc9;
+}
+
+html[data-theme="light"] .allstar-view-local-node-pill:hover,
+html[data-theme="light"] .allstar-view-local-node-pill:focus-visible {
+    color: #5b1768;
+    background: #f1ddf8;
+    border-color: #984cab;
+}
+
 .allstar-view-chip,
 .tree-depth,
 .allstar-view-activity-legend span {
@@ -1192,7 +1232,7 @@ html[data-theme="light"] .allstar-view-downstream-private-row.is-selected {
     }
 }
 
-/* Phones use the page's natural scroll instead of nested card scroll areas. */
+/* Phones use natural page scrolling, while large downstream groups scroll beneath their title row. */
 @media (max-width: 760px) {
     .allstar-view-scroll-panel {
         max-height: none;
@@ -1207,6 +1247,16 @@ html[data-theme="light"] .allstar-view-downstream-private-row.is-selected {
         position: static;
         top: auto;
         box-shadow: none;
+    }
+
+    .allstar-view-downstream-children {
+        max-height: 240px;
+        overflow-y: auto;
+        overscroll-behavior-y: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-color: #9b4fbd transparent;
+        scrollbar-width: thin;
+        touch-action: pan-y;
     }
 
     .allstar-view-downstream-list,
@@ -1264,5 +1314,74 @@ html[data-theme="light"] .allstar-view-audio-toggle.is-on {
     .allstar-view-audio-toggle {
         min-height: 34px;
         padding-inline: 12px;
+    }
+}
+
+/* Live Activity controls. Desktop keeps the full existing activity list. */
+.allstar-view-activity-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 9px;
+}
+
+.allstar-view-activity-toolbar .allstar-view-activity-legend {
+    margin-bottom: 0;
+}
+
+.allstar-view-activity-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    margin-left: auto;
+}
+
+.allstar-view-activity-action {
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text-main);
+    background: var(--bg-status);
+    font: inherit;
+    font-size: 0.67rem;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    touch-action: manipulation;
+}
+
+.allstar-view-activity-action:hover,
+.allstar-view-activity-action:focus-visible {
+    border-color: var(--blue);
+    outline: none;
+}
+
+.allstar-view-activity-toggle {
+    display: none;
+}
+
+@media (max-width: 760px) {
+    .allstar-view-activity-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .allstar-view-activity-actions {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .allstar-view-activity-action {
+        min-height: 38px;
+    }
+
+    .allstar-view-activity-toggle:not([hidden]) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 }

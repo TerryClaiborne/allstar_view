@@ -254,14 +254,23 @@ chmod 0755 "$APP_DIR/setup_allstar_view.sh" "$HELPER"
 chown root:root "$APP_DIR/setup_allstar_view.sh" "$HELPER"
 chmod 0640 "$CONFIG_FILE"; chown root:"$WEB_GROUP" "$CONFIG_FILE"
 
-tmp_sudo="$(mktemp)"; trap 'rm -f "$tmp_sudo"' EXIT
+tmp_sudo="$(mktemp)"
 printf '%s\n' "$WEB_USER ALL=(root) NOPASSWD: $HELPER *" > "$tmp_sudo"
 chmod 0440 "$tmp_sudo"; visudo -cf "$tmp_sudo" >/dev/null || fail "Generated sudoers rule failed validation."
 install -o root -g root -m 0440 "$tmp_sudo" "$SUDOERS_FILE"
 
-tmp_conf="$(mktemp)"; old_conf="$(mktemp)"; had_conf=0; was_enabled=0
+tmp_conf="$(mktemp)"; old_conf="$(mktemp)"; apache_sites_backup="$(mktemp)"; had_conf=0; was_enabled=0
+trap 'rm -f "$tmp_sudo" "$tmp_conf" "$old_conf" "$apache_sites_backup"' EXIT
 if [[ -f "$APACHE_CONF" ]]; then cp -a "$APACHE_CONF" "$old_conf"; had_conf=1; fi
 if [[ -L "/etc/apache2/conf-enabled/${APACHE_CONF_NAME}.conf" ]]; then was_enabled=1; fi
+tar -cpf "$apache_sites_backup" -C / etc/apache2/sites-available etc/apache2/sites-enabled
+
+restore_apache() {
+    tar -xpf "$apache_sites_backup" -C / >>"$QUIET_LOG" 2>&1 || true
+    if [[ "$had_conf" == "1" ]]; then install -o root -g root -m 0644 "$old_conf" "$APACHE_CONF"; else rm -f "$APACHE_CONF"; fi
+    if [[ "$was_enabled" == "1" ]]; then a2enconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1 || true; else a2disconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1 || true; fi
+}
+
 cat > "$tmp_conf" <<EOF
 <Directory "$APP_DIR">
     Options -Indexes
@@ -277,20 +286,66 @@ cat > "$tmp_conf" <<EOF
 EOF
 install -o root -g root -m 0644 "$tmp_conf" "$APACHE_CONF"
 a2enconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1
+
+if ! php <<'PHP' >>"$QUIET_LOG"
+<?php
+$condition = '(%{REQUEST_STATUS} == 200) && (%{REQUEST_URI} =~ m#^/allstar_view/api/(local|downstream|echolink)\.php$#)';
+$legacyAllTune = '%{REQUEST_URI} =~ m#^/alltune2/(api/status\.php|public/alltune2_ribbon_bar\.php)#';
+$paths = glob('/etc/apache2/sites-enabled/*.conf') ?: [];
+$seen = [];
+$handled = false;
+$skipped = [];
+foreach ($paths as $path) {
+    $real = realpath($path);
+    if ($real === false || isset($seen[$real])) continue;
+    $seen[$real] = true;
+    $lines = file($real);
+    if ($lines === false) throw new RuntimeException("Unable to read $real");
+    $changed = false;
+    foreach ($lines as &$line) {
+        $eol = str_ends_with($line, "\n") ? "\n" : '';
+        $text = rtrim($line, "\r\n");
+        if (!str_contains($text, 'CustomLog') || !str_contains($text, '${APACHE_LOG_DIR}/access.log')) continue;
+        if (str_contains($text, '/allstar_view/api/')) { $handled = true; continue; }
+        if (preg_match('/^(\s*CustomLog\s+\$\{APACHE_LOG_DIR\}\/access\.log\s+combined)\s*$/', $text, $m)) {
+            $line = $m[1] . ' "expr=!((' . $condition . '))"' . $eol;
+        } elseif (preg_match('/^(\s*CustomLog\s+\$\{APACHE_LOG_DIR\}\/access\.log\s+combined)\s+env=!dontlog_alltune2_polling\s*$/', $text, $m)) {
+            $line = $m[1] . ' "expr=!((' . $condition . ') || (' . $legacyAllTune . '))"' . $eol;
+        } elseif (preg_match('/^(\s*CustomLog\s+\$\{APACHE_LOG_DIR\}\/access\.log\s+combined)\s+"expr=(.*)"\s*$/', $text, $m)
+            && (str_contains(str_replace('\\', '', $m[2]), '/alltune2/') || str_contains(str_replace('\\', '', $m[2]), '/dvswitch_cockpit/'))) {
+            $line = $m[1] . ' "expr=((' . $m[2] . ') && !((' . $condition . ')))"' . $eol;
+        } else {
+            $skipped[$real] = true;
+            continue;
+        }
+        $changed = true;
+        $handled = true;
+    }
+    unset($line);
+    if ($changed && file_put_contents($real, implode('', $lines), LOCK_EX) === false) {
+        throw new RuntimeException("Unable to update $real");
+    }
+}
+foreach (array_keys($skipped) as $path) fwrite(STDERR, "[WARN] Unsupported Apache access.log line left unchanged in $path.\n");
+if (!$handled) fwrite(STDERR, "[WARN] No supported enabled Apache access.log line was found; polling log filtering was not installed.\n");
+PHP
+then
+    restore_apache
+    fail "Unable to install the Apache access-log filter; the previous state was restored."
+fi
+
 if ! apache2ctl configtest >>"$QUIET_LOG" 2>&1; then
-    if [[ "$had_conf" == "1" ]]; then install -o root -g root -m 0644 "$old_conf" "$APACHE_CONF"; else rm -f "$APACHE_CONF"; fi
-    if [[ "$was_enabled" == "1" ]]; then a2enconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1 || true; else a2disconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1 || true; fi
+    restore_apache
     apache2ctl configtest >>"$QUIET_LOG" 2>&1 || true
-    fail "Apache rejected the AllStar View security configuration; the previous state was restored."
+    fail "Apache rejected the AllStar View configuration; the previous state was restored."
 fi
 if ! systemctl reload apache2.service >>"$QUIET_LOG" 2>&1; then
-    if [[ "$had_conf" == "1" ]]; then install -o root -g root -m 0644 "$old_conf" "$APACHE_CONF"; else rm -f "$APACHE_CONF"; fi
-    if [[ "$was_enabled" == "1" ]]; then a2enconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1 || true; else a2disconf "$APACHE_CONF_NAME" >>"$QUIET_LOG" 2>&1 || true; fi
+    restore_apache
     apache2ctl configtest >>"$QUIET_LOG" 2>&1 || true
     systemctl reload apache2.service >>"$QUIET_LOG" 2>&1 || true
     fail "Apache reload failed; the previous AllStar View configuration was restored."
 fi
-rm -f "$tmp_conf" "$old_conf" "$tmp_sudo"; trap - EXIT
+rm -f "$tmp_conf" "$old_conf" "$tmp_sudo" "$apache_sites_backup"; trap - EXIT
 
 for dir in run logs cache cache/stats cache/echolink; do sudo -u "$WEB_USER" test -w "$APP_DIR/$dir" || fail "$APP_DIR/$dir is not writable by $WEB_USER"; done
 sudo -u "$WEB_USER" test ! -w "$APP_DIR/public" || fail "$APP_DIR/public must not be writable by $WEB_USER"

@@ -16,8 +16,7 @@ final class Monitor
     private const STATE_FILE = '/run/state.json';
     private const ACTIVITY_LOG_FILE = '/logs/activity.jsonl';
     private const ACTIVITY_PREVIEW_LIMIT = 50;
-    private const ACTIVITY_LOG_MAX_BYTES = 262144;
-    private const ACTIVITY_LOG_RETAIN_LINES = 500;
+    private const ACTIVITY_LOG_RETAIN_LINES = 50;
 
     public function __construct(private Config $config)
     {
@@ -1145,11 +1144,7 @@ final class Monitor
 
         if ($lines !== '' && @file_put_contents($path, $lines, FILE_APPEND | LOCK_EX) !== false) {
             @chmod($path, 0664);
-            clearstatcache(true, $path);
-            $size = @filesize($path);
-            if (is_int($size) && $size > self::ACTIVITY_LOG_MAX_BYTES) {
-                $this->trimActivityLog($path);
-            }
+            $this->trimActivityLog($path);
         }
     }
 
