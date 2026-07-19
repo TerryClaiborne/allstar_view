@@ -40,7 +40,6 @@
         detailLocation: document.getElementById('allstar-view-detail-location'),
         detailDescription: document.getElementById('allstar-view-detail-description'),
         detailLinks: document.getElementById('allstar-view-detail-links'),
-        detailStats: document.getElementById('allstar-view-detail-stats'),
         detailQrz: document.getElementById('allstar-view-detail-qrz'),
         activity: document.getElementById('allstar-view-activity'),
         activityToggle: document.getElementById('allstar-view-activity-toggle'),
@@ -50,6 +49,7 @@
         localTimer: 0,
         downstreamTimer: 0,
         localLoading: false,
+        localSnapshotLoaded: false,
         downstreamLoading: false,
         echoLinkLoading: false,
         echoLinkTimer: 0,
@@ -384,7 +384,9 @@
         elements.connections.innerHTML = connections.map((item) => {
             const selected = state.selectedType === 'current' && item.key === state.selectedKey ? ' is-selected' : '';
             const keyed = item.keyed ? ' is-keyed' : '';
-            const secondary = [item.callsign, item.description].filter(Boolean).join(' — ') || item.channel || item.peer || 'Local Asterisk connection';
+            const secondary = String(item.kind || '') === 'asl'
+                ? ([item.callsign, item.description, item.location].filter(Boolean).join(' — ') || 'AllStarLink node')
+                : ([item.callsign, item.description].filter(Boolean).join(' — ') || item.channel || item.peer || 'Local Asterisk connection');
             const direction = item.direction ? `<span class="allstar-view-direction">${escapeHtml(item.direction)}</span>` : '';
             const keyedBadge = item.keyed ? '<span class="allstar-view-keyed-badge">Keyed</span>' : '';
 
@@ -436,8 +438,24 @@
         }[type] || 'Update';
     }
 
+    function formatActivityTimestamp(value) {
+        const time = formatTime(value);
+        if (mobileActivityMedia.matches) {
+            return time;
+        }
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return time;
+        }
+
+        return `${time} · ${date.getMonth() + 1}/${date.getDate()}`;
+    }
+
     function activityIdentity(item) {
-        const detail = [item.callsign, item.description].filter(Boolean).join(' — ');
+        const detail = String(item.kind || '') === 'asl'
+            ? [item.callsign, item.location].filter(Boolean).join(' — ')
+            : [item.callsign, item.description].filter(Boolean).join(' — ');
         return detail || item.node || item.source || 'Connection';
     }
 
@@ -453,6 +471,7 @@
                 event.node,
                 event.callsign,
                 event.description,
+                event.location,
                 event.source,
                 event.timestamp,
                 event.duration_seconds,
@@ -501,6 +520,9 @@
 
         elements.activity.innerHTML = visibleActivity.map((event) => {
             const identity = activityIdentity(event);
+            const sourceLabel = String(event.kind || '') === 'asl'
+                ? 'ASL'
+                : String(event.source || '').trim();
             const eventKey = activityEventKey(event);
             const selected = state.selectedType === 'activity' && state.selectedKey === eventKey ? ' is-selected' : '';
             const duration = Number(event.duration_seconds || 0);
@@ -510,9 +532,9 @@
                     <span class="allstar-view-activity-type ${activityClass(event.type)}">${activityLabel(event.type)}</span>
                     <span class="allstar-view-activity-main">
                         <strong>${escapeHtml(event.node || identity)}</strong>
-                        <span>${escapeHtml(identity)}${event.source ? ` · ${escapeHtml(event.source)}` : ''}${durationText}</span>
+                        <span>${escapeHtml(identity)}${sourceLabel ? ` · ${escapeHtml(sourceLabel)}` : ''}${durationText}</span>
                     </span>
-                    <time datetime="${escapeHtml(event.timestamp)}">${escapeHtml(formatTime(event.timestamp))}</time>
+                    <time datetime="${escapeHtml(event.timestamp)}">${escapeHtml(formatActivityTimestamp(event.timestamp))}</time>
                 </button>`;
         }).join('');
     }
@@ -772,14 +794,10 @@
                     </section>`;
             }
 
-            const { root, visibleChildren, directPosition, directTotal } = section;
+            const { root, visibleChildren } = section;
             const orderedChildren = visibleChildren;
-            const publicChildren = orderedChildren.filter((item) => downstreamCategory(item) === 'nodes');
-            const privateChildren = orderedChildren.filter((item) => downstreamCategory(item) === 'private');
-            const remoteChildren = orderedChildren.filter(isDownstreamWebPhoneClient);
-            const echoChildren = orderedChildren.filter(isDownstreamEchoLink);
             const rootSelected = state.selectedType === 'root' && state.selectedKey === root.key ? ' is-selected' : '';
-            const rootIdentity = [root.callsign, root.description].filter(Boolean).join(' — ') || 'Direct AllStarLink node';
+            const rootIdentity = [root.callsign, root.description, root.location].filter(Boolean).join(' — ') || 'Direct AllStarLink node';
             const childRows = orderedChildren.length ? orderedChildren.map((item, index) => {
                 const selected = state.selectedType === 'downstream' && state.selectedKey === item.key ? ' is-selected' : '';
                 const branch = index === orderedChildren.length - 1 ? '&#9492;&#9472;' : '&#9500;&#9472;';
@@ -841,19 +859,6 @@
                     </button>`;
             }).join('') : '<div class="allstar-view-downstream-none">No public child nodes, Web/Phone clients, or EchoLink connections reported for this direct path.</div>';
 
-            const countParts = directTotal > 1 ? [`Direct ${directPosition} of ${directTotal}`] : [];
-            if (state.downstreamFilter === 'all' || state.downstreamFilter === 'nodes') {
-                countParts.push(`${publicChildren.length} ${publicChildren.length === 1 ? 'node' : 'nodes'}`);
-            }
-            if ((state.downstreamFilter === 'all' || state.downstreamFilter === 'private') && privateChildren.length) {
-                countParts.push(`${privateChildren.length} ${privateChildren.length === 1 ? 'pvt node' : 'pvt nodes'}`);
-            }
-            if ((state.downstreamFilter === 'all' || state.downstreamFilter === 'clients') && remoteChildren.length) {
-                countParts.push(`${remoteChildren.length} ${remoteChildren.length === 1 ? 'client' : 'clients'}`);
-            }
-            if ((state.downstreamFilter === 'all' || state.downstreamFilter === 'echolink') && echoChildren.length) {
-                countParts.push(`${echoChildren.length} EchoLink`);
-            }
             const prioritized = String(root.node) === state.preferredDirectNode ? ' is-prioritized' : '';
             return `
                 <section class="allstar-view-downstream-group${prioritized}" data-direct-node="${escapeHtml(root.node)}">
@@ -865,7 +870,6 @@
                         </span>
                         <span class="allstar-view-downstream-state">
                             <span class="allstar-view-chip ${modeClass(root.mode)}">${escapeHtml(root.mode_label)}</span>
-                            <span class="allstar-view-downstream-count-badge">${escapeHtml(countParts.join(' · '))}</span>
                         </span>
                     </button>
                     <div class="allstar-view-downstream-children">${childRows}</div>
@@ -974,12 +978,10 @@
             }
         }
 
-        const hasStats = Boolean(item.stats_url);
         const hasQrz = Boolean(item.qrz_url);
-        setLink(elements.detailStats, item.stats_url, hasStats);
         setLink(elements.detailQrz, item.qrz_url, hasQrz);
         if (elements.detailLinks) {
-            elements.detailLinks.hidden = !(hasStats || hasQrz);
+            elements.detailLinks.hidden = !hasQrz;
         }
     }
 
@@ -988,7 +990,7 @@
         if (elements.detailCall) elements.detailCall.textContent = '—';
         if (elements.detailPath) elements.detailPath.textContent = 'Select a row';
         if (elements.detailLocation) elements.detailLocation.textContent = '—';
-        if (elements.detailDescription) elements.detailDescription.textContent = 'Select a connection, downstream node, or activity entry to see its details.';
+        if (elements.detailDescription) elements.detailDescription.textContent = '—';
         if (elements.detailLinks) elements.detailLinks.hidden = true;
     }
 
@@ -1079,6 +1081,7 @@
     }
 
     function renderLocalSnapshot(snapshot) {
+        state.localSnapshotLoaded = true;
         const connections = Array.isArray(snapshot.connections) ? snapshot.connections : [];
         const summary = snapshot.summary && typeof snapshot.summary === 'object' ? snapshot.summary : {};
         state.localNode = String(snapshot.node || state.localNode || '').trim();
@@ -1261,6 +1264,9 @@
             }
             renderLocalSnapshot(payload.data);
         } catch (error) {
+            if (error?.name === 'AbortError' && state.localSnapshotLoaded) {
+                return;
+            }
             renderLocalFailure(error?.name === 'AbortError' ? 'Local status timed out and will retry.' : 'Local status could not be read and will retry.');
         } finally {
             window.clearTimeout(timeout);

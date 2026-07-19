@@ -14,11 +14,14 @@ final class Downstream
     private const LOCK_FILE = '/run/downstream.lock';
     private const NODE_CACHE_DIR = '/cache/stats';
     private const REFRESH_SECONDS = 30;
-    private const NODE_CACHE_SECONDS = 45;
+    private const NODE_CACHE_SECONDS = 180;
     private const STALE_FALLBACK_SECONDS = 21600;
+    private const FAILURE_RETRY_SECONDS = 90;
+    private const MAX_NODE_FAILURES = 3;
+    private const PENDING_WARNING = 'Downstream data is pending; AllStar Stats is temporarily unavailable and will be retried automatically.';
     private const API_TIMEOUT_SECONDS = 1.2;
     private const MAX_CACHED_QUEUE_STEPS_PER_REQUEST = 30;
-    private const MAX_NETWORK_READS_PER_REQUEST = 2;
+    private const MAX_NETWORK_READS_PER_REQUEST = 1;
     private const SCAN_VERSION = 6;
 
     public function __construct(private Config $config)
@@ -35,7 +38,11 @@ final class Downstream
         $signature = $this->directSignature($direct);
         $state = $this->readJson($statePath) ?? $this->newState($signature, $direct);
         if (($state['signature'] ?? '') !== $signature) {
+            $retryAt = trim((string) ($state['retry_at'] ?? ''));
             $state = $this->newState($signature, $direct);
+            if ($retryAt !== '') {
+                $state['retry_at'] = $retryAt;
+            }
         } else {
             $state['direct'] = $direct;
         }
@@ -58,17 +65,28 @@ final class Downstream
                 CacheMaintenance::clearStats($root);
             }
             if ($direct === []) {
+                $retryAt = trim((string) ($state['retry_at'] ?? ''));
                 $state = $this->newState($signature, []);
+                if ($retryAt !== '') {
+                    $state['retry_at'] = $retryAt;
+                }
                 $state['display_updated_at'] = gmdate('c');
                 $this->writeJson($statePath, $state);
                 return $this->response($state, false);
             }
 
-            if (!$this->hasActiveScan($state) && $this->needsRefresh($state)) {
+            $retryValue = trim((string) ($state['retry_at'] ?? ''));
+            $retryAt = $retryValue !== '' ? strtotime($retryValue) : false;
+            $retryDeferred = $retryAt !== false && $retryAt > time();
+            if (!$retryDeferred && $retryValue !== '') {
+                unset($state['retry_at']);
+            }
+
+            if (!$this->hasActiveScan($state) && !$retryDeferred && $this->needsRefresh($state)) {
                 $state['scan'] = $this->newScan($direct);
             }
 
-            if ($this->hasActiveScan($state)) {
+            if ($this->hasActiveScan($state) && !$retryDeferred) {
                 $state = $this->advanceScan($root, $state, $localNode);
             }
 
@@ -214,13 +232,41 @@ final class Downstream
                 $data = $cache['data'];
             } elseif ($networkReads < self::MAX_NETWORK_READS_PER_REQUEST) {
                 $networkReads++;
+                $scan['api_reads'] = (int) ($scan['api_reads'] ?? 0) + 1;
                 $fetched = $this->fetchStats($node);
                 if ($fetched !== null) {
                     $data = $fetched;
                     $this->writeNodeCache($root, $node, $fetched);
-                } elseif ($cache !== null && $cache['age'] <= self::STALE_FALLBACK_SECONDS) {
-                    $data = $cache['data'];
-                    $usedStale = true;
+                    unset($state['retry_at']);
+                    if (($state['last_warning'] ?? '') === self::PENDING_WARNING) {
+                        $state['last_warning'] = '';
+                    }
+                } else {
+                    if ($cache !== null && $cache['age'] <= self::STALE_FALLBACK_SECONDS) {
+                        $state['retry_at'] = gmdate('c', time() + self::FAILURE_RETRY_SECONDS);
+                        $data = $cache['data'];
+                        $usedStale = true;
+                    } else {
+                        $failedAttempts = (int) ($current['failed_attempts'] ?? 0) + 1;
+                        $scan['failures'] = (int) ($scan['failures'] ?? 0) + 1;
+
+                        if ($failedAttempts < self::MAX_NODE_FAILURES) {
+                            $current['failed_attempts'] = $failedAttempts;
+                            $scan['queue'][0] = $current;
+                            $state['retry_at'] = gmdate('c', time() + self::FAILURE_RETRY_SECONDS);
+                            $state['last_warning'] = self::PENDING_WARNING;
+                            break;
+                        }
+
+                        unset($state['retry_at']);
+                        if (($state['last_warning'] ?? '') === self::PENDING_WARNING) {
+                            $state['last_warning'] = '';
+                        }
+
+                        array_shift($scan['queue']);
+                        $scan['visited'][$visitKey] = true;
+                        continue;
+                    }
                 }
             } else {
                 break;
@@ -228,7 +274,6 @@ final class Downstream
 
             array_shift($scan['queue']);
             $scan['visited'][$visitKey] = true;
-            $scan['api_reads'] = (int) ($scan['api_reads'] ?? 0) + 1;
 
             if (!is_array($data)) {
                 $scan['failures'] = (int) ($scan['failures'] ?? 0) + 1;
@@ -259,7 +304,7 @@ final class Downstream
 
                 $childNode = (string) ($child['node'] ?? '');
                 $childVisitKey = (string) ($current['direct_node'] ?? '') . ':' . $childNode;
-                if ($childNode !== '' && !isset($scan['visited'][$childVisitKey])) {
+                if ($childNode !== '' && $childNode !== $localNode && !isset($scan['visited'][$childVisitKey])) {
                     $scan['queue'][] = [
                         'node' => $childNode,
                         'depth' => $depth + 1,
@@ -329,10 +374,12 @@ final class Downstream
     {
         $url = 'https://stats.allstarlink.org/api/stats/' . rawurlencode($node);
         $raw = null;
+        $attempted = false;
 
         if (function_exists('curl_init')) {
             $curl = curl_init($url);
             if ($curl !== false) {
+                $attempted = true;
                 curl_setopt_array($curl, [
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_FOLLOWLOCATION => false,
@@ -350,7 +397,7 @@ final class Downstream
             }
         }
 
-        if ($raw === null && filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
+        if (!$attempted && $raw === null && filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
             $context = stream_context_create([
                 'http' => [
                     'method' => 'GET',
@@ -437,7 +484,8 @@ final class Downstream
         $hidden = 0;
         foreach ($entries as $node => $entry) {
             $node = (string) $node;
-            if ($node === $sourceNode || $node === $localNode || isset($directNodeSet[$node]) || !$this->shouldShowNode($node, $localNode)) {
+            $isLocalNode = $node === $localNode;
+            if ($node === $sourceNode || isset($directNodeSet[$node]) || (!$isLocalNode && !$this->shouldShowNode($node, $localNode))) {
                 $hidden++;
                 continue;
             }

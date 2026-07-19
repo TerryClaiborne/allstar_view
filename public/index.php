@@ -234,10 +234,12 @@ $myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawu
                         <div><span>Location</span><strong id="allstar-view-detail-location">—</strong></div>
                     </div>
                     <div class="allstar-view-detail-description" id="allstar-view-detail-description">
-                        Select a current connection to see its local details.
+                        —
+                    </div>
+                    <div class="allstar-view-detail-description allstar-view-detail-helper">
+                        Select a connection, downstream node, or activity entry to see its details.
                     </div>
                     <div class="allstar-view-detail-links" id="allstar-view-detail-links" hidden>
-                        <a id="allstar-view-detail-stats" href="#" target="_blank" rel="noopener">AllStar Stats</a>
                         <a id="allstar-view-detail-qrz" href="#" target="_blank" rel="noopener">QRZ</a>
                     </div>
                 </div>

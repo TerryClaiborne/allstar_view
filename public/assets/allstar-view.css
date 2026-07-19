@@ -1093,6 +1093,7 @@ html[data-theme="light"] .allstar-view-downstream-count-badge {
 
 .allstar-view-activity-row time {
     font-size: 0.67rem;
+    white-space: nowrap;
 }
 
 html[data-theme="light"] .allstar-view-summary-card > span:last-child,
