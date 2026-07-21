@@ -68,13 +68,19 @@ Clicking a direct connection brings that connection’s downstream group into vi
 
 ---
 
+## Faster Updates Between Local Nodes
+
+When directly connected nodes both run AllStar View and can reach each other, each node can use the other node’s read-only local status for faster Web/Phone, EchoLink, and direct-node updates.
+
+If the peer status is not available, AllStar View continues with normal AllStar Stats scanning.
+
+---
+
 ## EchoLink Identification
 
-EchoLink sessions can appear through either a normal direct connection or a temporary relay identity.
+AllStar View uses live connection information and EchoLink lookups to show the callsign and assigned EchoLink node number.
 
-AllStar View uses live channel information and cached official lookups to show the best available callsign and assigned EchoLink node number.
-
-Temporary relay numbers are not treated as trusted permanent EchoLink identities. This helps prevent an unrelated station from being shown when a temporary relay number happens to match another published EchoLink node.
+When a directly connected peer also runs AllStar View, its live local status is used instead of temporary relay data when available.
 
 ---
 
@@ -287,8 +293,6 @@ Writable data stays under:
 
 History and caches are automatically limited so they do not grow without bounds.
 
-If AllStar Stats is temporarily unavailable, AllStar View keeps the last successful downstream tree and displays a warning instead of clearing useful information.
-
 ---
 
 ## Light and Dark Themes
@@ -326,19 +330,9 @@ For access from outside the local network, prefer Tailscale, a VPN, or trusted H
 
 ## Troubleshooting
 
-### Downstream refresh warning
-
-If you see:
-
-```text
-Downstream refresh could not reach AllStar Stats; the last successful tree is retained.
-```
-
-AllStar Stats may be temporarily unavailable. The previous successful tree remains visible until the service responds again.
-
 ### Downstream results appear gradually
 
-A new or very large downstream tree may populate in stages while bounded lookups are completed. Cached paths should appear faster on later visits.
+A large downstream tree builds in stages. The last completed tree stays visible while a new scan runs, and one failed lookup does not stop the rest of the queue.
 
 ### Audio alerts do not speak
 

@@ -590,15 +590,6 @@ html[data-theme="light"] .activity-disconnect {
     border: 1px solid rgba(255, 120, 95, 0.52);
 }
 
-.allstar-view-inline-warning {
-    padding: 8px 10px;
-    color: #ffe8b5;
-    background: rgba(255, 183, 71, 0.10);
-    border: 1px solid rgba(255, 183, 71, 0.34);
-    border-radius: 10px;
-    font-size: 0.7rem;
-    line-height: 1.4;
-}
 
 .allstar-view-detail-description {
     min-height: 48px;
@@ -658,11 +649,6 @@ html[data-theme="light"] .allstar-view-keyed-badge {
     border-color: #e4ad9d;
 }
 
-html[data-theme="light"] .allstar-view-inline-warning {
-    color: #855700;
-    background: #fff8e5;
-    border-color: #dfc47d;
-}
 
 html[data-theme="light"] .allstar-view-detail-links a {
     color: #225d94;

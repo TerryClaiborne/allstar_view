@@ -18,8 +18,8 @@ final class Downstream
     private const STALE_FALLBACK_SECONDS = 21600;
     private const FAILURE_RETRY_SECONDS = 90;
     private const MAX_NODE_FAILURES = 3;
-    private const PENDING_WARNING = 'Downstream data is pending; AllStar Stats is temporarily unavailable and will be retried automatically.';
     private const API_TIMEOUT_SECONDS = 1.2;
+    private const PEER_STATUS_TIMEOUT_SECONDS = 1.0;
     private const MAX_CACHED_QUEUE_STEPS_PER_REQUEST = 30;
     private const MAX_NETWORK_READS_PER_REQUEST = 1;
     private const SCAN_VERSION = 6;
@@ -50,7 +50,6 @@ final class Downstream
         $scanVersionChanged = (int) ($state['scan_version'] ?? 0) !== self::SCAN_VERSION;
         if ($scanVersionChanged) {
             $state['scan_version'] = self::SCAN_VERSION;
-            $state['last_warning'] = '';
             $state['scan'] = $direct === [] ? null : $this->newScan($direct);
         }
 
@@ -82,7 +81,7 @@ final class Downstream
                 unset($state['retry_at']);
             }
 
-            if (!$this->hasActiveScan($state) && !$retryDeferred && $this->needsRefresh($state)) {
+            if (!$this->hasActiveScan($state) && $this->needsRefresh($state)) {
                 $state['scan'] = $this->newScan($direct);
             }
 
@@ -90,8 +89,9 @@ final class Downstream
                 $state = $this->advanceScan($root, $state, $localNode);
             }
 
+            $peerSnapshots = $this->peerLocalSnapshots($direct, $localNode);
             $this->writeJson($statePath, $state);
-            return $this->response($state, false);
+            return $this->response($state, false, $peerSnapshots, $localNode);
         } finally {
             if (is_resource($lock)) {
                 @flock($lock, LOCK_UN);
@@ -149,7 +149,6 @@ final class Downstream
             'display_nodes' => [],
             'display_updated_at' => null,
             'last_attempt_at' => null,
-            'last_warning' => '',
             'scan' => $direct === [] ? null : $this->newScan($direct),
         ];
     }
@@ -168,6 +167,7 @@ final class Downstream
                 'direct_node' => $node,
                 'parent_node' => '',
                 'path_mode' => (string) ($item['mode'] ?? 'transceive'),
+                'force_refresh' => true,
             ];
         }
 
@@ -227,8 +227,12 @@ final class Downstream
             $cache = $this->readNodeCache($root, $node);
             $data = null;
             $usedStale = false;
+            $isDirectRoot = $depth === 1
+                && $node === (string) ($current['direct_node'] ?? '')
+                && trim((string) ($current['parent_node'] ?? '')) === '';
+            $forceRefresh = $isDirectRoot && !empty($current['force_refresh']);
 
-            if ($cache !== null && $cache['age'] <= self::NODE_CACHE_SECONDS) {
+            if (!$forceRefresh && $cache !== null && $cache['age'] <= self::NODE_CACHE_SECONDS) {
                 $data = $cache['data'];
             } elseif ($networkReads < self::MAX_NETWORK_READS_PER_REQUEST) {
                 $networkReads++;
@@ -238,9 +242,6 @@ final class Downstream
                     $data = $fetched;
                     $this->writeNodeCache($root, $node, $fetched);
                     unset($state['retry_at']);
-                    if (($state['last_warning'] ?? '') === self::PENDING_WARNING) {
-                        $state['last_warning'] = '';
-                    }
                 } else {
                     if ($cache !== null && $cache['age'] <= self::STALE_FALLBACK_SECONDS) {
                         $state['retry_at'] = gmdate('c', time() + self::FAILURE_RETRY_SECONDS);
@@ -252,17 +253,13 @@ final class Downstream
 
                         if ($failedAttempts < self::MAX_NODE_FAILURES) {
                             $current['failed_attempts'] = $failedAttempts;
-                            $scan['queue'][0] = $current;
-                            $state['retry_at'] = gmdate('c', time() + self::FAILURE_RETRY_SECONDS);
-                            $state['last_warning'] = self::PENDING_WARNING;
-                            break;
+                            array_shift($scan['queue']);
+                            $scan['queue'][] = $current;
+                            unset($state['retry_at']);
+                            continue;
                         }
 
                         unset($state['retry_at']);
-                        if (($state['last_warning'] ?? '') === self::PENDING_WARNING) {
-                            $state['last_warning'] = '';
-                        }
-
                         array_shift($scan['queue']);
                         $scan['visited'][$visitKey] = true;
                         continue;
@@ -329,14 +326,6 @@ final class Downstream
             }
 
             $failures = (int) ($scan['failures'] ?? 0);
-            if ($failures > 0 && $successes === 0) {
-                $state['last_warning'] = 'Downstream refresh could not reach AllStar Stats; the last successful tree is retained.';
-            } elseif (!empty($scan['used_stale_cache'])) {
-                $state['last_warning'] = 'Some downstream branches are using cached AllStar Stats data.';
-            } else {
-                $state['last_warning'] = '';
-            }
-
             $state['last_scan'] = [
                 'api_reads' => (int) ($scan['api_reads'] ?? 0),
                 'successes' => $successes,
@@ -652,7 +641,252 @@ final class Downstream
         });
     }
 
-    private function response(array $state, bool $refreshInProgress): array
+    private function peerLocalSnapshots(array $direct, string $localNode): array
+    {
+        if ($localNode === '' || $direct === []) {
+            return [];
+        }
+
+        $wanted = [];
+        foreach ($direct as $item) {
+            $node = $this->digits((string) ($item['node'] ?? ''));
+            if ($node !== '') {
+                $wanted[$node] = true;
+            }
+        }
+
+        $output = $this->readHelper(['rpt-lstats', $localNode]);
+        if ($output === null) {
+            return [];
+        }
+
+        $snapshots = [];
+        foreach (preg_split('/\R/', $output) ?: [] as $line) {
+            $parts = preg_split('/\s+/', trim((string) $line)) ?: [];
+            $node = $this->digits((string) ($parts[0] ?? ''));
+            $peerIp = trim((string) ($parts[1] ?? ''));
+            if (count($parts) < 6 || !isset($wanted[$node])
+                || strtoupper((string) end($parts)) !== 'ESTABLISHED'
+                || preg_match('/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/', $peerIp) !== 1) {
+                continue;
+            }
+
+            $host = str_contains($peerIp, ':') ? '[' . $peerIp . ']' : $peerIp;
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => self::PEER_STATUS_TIMEOUT_SECONDS,
+                    'ignore_errors' => true,
+                    'header' => "Accept: application/json\r\nConnection: close\r\nUser-Agent: AllStarView-Peer/0.50\r\n",
+                ],
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                    'allow_self_signed' => true,
+                ],
+            ]);
+            $raw = @file_get_contents('https://' . $host . '/allstar_view/api/local.php', false, $context);
+            $payload = is_string($raw) ? json_decode($raw, true) : null;
+            $snapshot = is_array($payload['data'] ?? null) ? $payload['data'] : null;
+            if (!is_array($snapshot) || empty($payload['ok']) || empty($snapshot['ok'])
+                || $this->digits((string) ($snapshot['node'] ?? '')) !== $node
+                || !is_array($snapshot['connections'] ?? null)) {
+                continue;
+            }
+            $snapshots[$node] = $snapshot['connections'];
+        }
+
+        return $snapshots;
+    }
+
+    private function overlayPeerRootRows(array $display, array $snapshots, string $localNode): array
+    {
+        $parents = [];
+        foreach ($display as $item) {
+            if (!is_array($item) || strtolower((string) ($item['kind'] ?? '')) !== 'asl') {
+                continue;
+            }
+            $directNode = $this->digits((string) ($item['direct_node'] ?? ''));
+            $node = $this->digits((string) ($item['node'] ?? ''));
+            $parentNode = $this->digits((string) ($item['parent_node'] ?? ''));
+            if ($directNode !== '' && $node !== '' && $parentNode !== '') {
+                $parents[$directNode][$node] = $parentNode;
+            }
+        }
+
+        $liveAsl = [];
+        $liveRows = [];
+        foreach ($snapshots as $directNode => $connections) {
+            $directNode = $this->digits((string) $directNode);
+            if ($directNode === '' || !is_array($connections)) {
+                continue;
+            }
+
+            foreach ($connections as $connection) {
+                if (!is_array($connection)) {
+                    continue;
+                }
+
+                $kind = strtolower(trim((string) ($connection['kind'] ?? '')));
+                $clientType = strtolower(trim((string) ($connection['client_type'] ?? '')));
+                $rawNode = trim((string) ($connection['node'] ?? ''));
+                $webPhone = $kind === 'client'
+                    && ($clientType === 'web_phone' || preg_match('/-P$/i', $rawNode) === 1);
+
+                if ($kind === 'asl') {
+                    $node = $this->digits($rawNode);
+                    if ($node === '' || $node === $localNode || $node === $directNode) {
+                        continue;
+                    }
+
+                    $liveAsl[$directNode][$node] = true;
+                    $callsign = trim((string) ($connection['callsign'] ?? ''));
+                    $description = trim((string) ($connection['description'] ?? ''));
+                    $location = trim((string) ($connection['location'] ?? ''));
+                    $nodeNumber = (int) $node;
+                    $isPrivate = ($nodeNumber >= 1000 && $nodeNumber <= 1999)
+                        || ($callsign === '' && $description === '' && $location === '');
+                    $mode = (string) ($connection['mode'] ?? 'transceive');
+                    $mode = $mode === 'local_monitor' ? 'local_monitor' : 'transceive';
+                    $liveRows[] = [
+                        'key' => 'downstream-peer-asl:' . $directNode . ':' . $node,
+                        'kind' => 'asl',
+                        'source' => $isPrivate ? 'Private Node' : 'AllStarLink',
+                        'node' => $node,
+                        'callsign' => $callsign,
+                        'description' => $isPrivate ? 'Private Node' : $description,
+                        'location' => $location,
+                        'display' => $isPrivate
+                            ? 'Node ' . $node . ' - Private Node'
+                            : trim((string) ($connection['display'] ?? ($callsign !== '' ? $callsign : ($description !== '' ? $description : $node)))),
+                        'mode' => $mode,
+                        'mode_label' => $mode === 'local_monitor' ? 'Local Monitor' : 'Transceive',
+                        'direct_node' => $directNode,
+                        'parent_node' => $directNode,
+                        'depth' => 1,
+                        'is_private' => $isPrivate,
+                        'stats_url' => $isPrivate ? '' : 'https://stats.allstarlink.org/stats/' . rawurlencode($node),
+                        'qrz_url' => $isPrivate ? '' : (string) ($connection['qrz_url'] ?? ''),
+                        'remote_reported' => true,
+                    ];
+                    continue;
+                }
+
+                if (!$webPhone && $kind !== 'echo') {
+                    continue;
+                }
+
+                $callsign = trim((string) ($connection['callsign'] ?? ''));
+                $identity = $callsign !== '' ? strtoupper($callsign) : $rawNode;
+                if ($identity === '') {
+                    continue;
+                }
+                $mode = (string) ($connection['mode'] ?? 'transceive');
+                $mode = $mode === 'local_monitor' ? 'local_monitor' : 'transceive';
+                $liveRows[] = [
+                    'key' => 'downstream-peer-' . $kind . ':' . $directNode . ':' . $identity,
+                    'kind' => $kind,
+                    'client_type' => $webPhone ? 'web_phone' : '',
+                    'source' => $kind === 'echo' ? 'EchoLink' : 'Web/Phone Client',
+                    'node' => $rawNode,
+                    'reported_node' => trim((string) ($connection['reported_node'] ?? '')),
+                    'echolink_node' => trim((string) ($connection['echolink_node'] ?? '')),
+                    'callsign' => $callsign,
+                    'description' => trim((string) ($connection['description'] ?? '')),
+                    'location' => trim((string) ($connection['location'] ?? '')),
+                    'display' => trim((string) ($connection['display'] ?? $identity)),
+                    'mode' => $mode,
+                    'mode_label' => $mode === 'local_monitor' ? 'Local Monitor' : 'Transceive',
+                    'direct_node' => $directNode,
+                    'parent_node' => $directNode,
+                    'depth' => 1,
+                    'stats_url' => '',
+                    'qrz_url' => (string) ($connection['qrz_url'] ?? ''),
+                    'identity_pending' => !empty($connection['identity_pending']),
+                    'remote_reported' => true,
+                ];
+            }
+        }
+
+        $map = [];
+        foreach ($display as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $directNode = $this->digits((string) ($item['direct_node'] ?? ''));
+            if ($directNode === '' || !isset($snapshots[$directNode])) {
+                $this->addWorkingNode($map, $item);
+                continue;
+            }
+
+            $kind = strtolower((string) ($item['kind'] ?? ''));
+            $clientType = strtolower((string) ($item['client_type'] ?? ''));
+            $atRoot = $this->digits((string) ($item['parent_node'] ?? '')) === $directNode;
+            $authoritativeRootRow = $kind === 'asl'
+                || $kind === 'echo'
+                || ($kind === 'client' && $clientType === 'web_phone');
+            if ($atRoot && $authoritativeRootRow) {
+                continue;
+            }
+
+            $rootChild = $this->rootAslChild($item, $directNode, $parents[$directNode] ?? []);
+            if ($rootChild !== '' && !isset($liveAsl[$directNode][$rootChild])) {
+                continue;
+            }
+
+            $this->addWorkingNode($map, $item);
+        }
+
+        foreach ($liveRows as $item) {
+            $this->addWorkingNode($map, $item);
+        }
+
+        $result = array_values($map);
+        $this->sortNodes($result);
+        return $result;
+    }
+
+    private function rootAslChild(array $item, string $directNode, array $parents): string
+    {
+        $kind = strtolower((string) ($item['kind'] ?? ''));
+        $current = $kind === 'asl'
+            ? $this->digits((string) ($item['node'] ?? ''))
+            : $this->digits((string) ($item['parent_node'] ?? ''));
+        if ($current === '' || $current === $directNode) {
+            return '';
+        }
+
+        $seen = [];
+        while ($current !== '') {
+            if (isset($seen[$current])) {
+                return '';
+            }
+            $seen[$current] = true;
+            $parent = $this->digits((string) ($parents[$current] ?? ''));
+            if ($parent === $directNode) {
+                return $current;
+            }
+            if ($parent === '') {
+                return '';
+            }
+            $current = $parent;
+        }
+
+        return '';
+    }
+
+    private function readHelper(array $arguments): ?string
+    {
+        $helper = dirname(__DIR__) . '/bin/allstar-view-read.sh';
+        $shell = '/usr/bin/timeout 2 /usr/bin/sudo -n ' . escapeshellarg($helper);
+        foreach ($arguments as $argument) {
+            $shell .= ' ' . escapeshellarg((string) $argument);
+        }
+        $output = shell_exec($shell . ' 2>/dev/null');
+        return is_string($output) ? trim($output) : null;
+    }
+
+    private function response(array $state, bool $refreshInProgress, array $peerSnapshots = [], string $localNode = ''): array
     {
         $scan = is_array($state['scan'] ?? null) ? $state['scan'] : null;
         $display = array_values(array_filter($state['display_nodes'] ?? [], 'is_array'));
@@ -670,16 +904,15 @@ final class Downstream
             $this->sortNodes($display);
         }
 
+        if ($peerSnapshots !== []) {
+            $display = $this->overlayPeerRootRows($display, $peerSnapshots, $localNode);
+        }
+
         $direct = array_values(array_filter($state['direct'] ?? [], 'is_array'));
         $pending = $scan !== null ? count($scan['queue'] ?? []) : 0;
         $updatedAt = $state['display_updated_at'] ?? null;
         $updatedTs = strtotime((string) $updatedAt);
         $stale = $updatedTs === false || (time() - $updatedTs) > (self::REFRESH_SECONDS * 2);
-        $warnings = [];
-        if (trim((string) ($state['last_warning'] ?? '')) !== '') {
-            $warnings[] = trim((string) $state['last_warning']);
-        }
-
         $publicNodeCount = 0;
         $privateNodeCount = 0;
         $remoteClientCount = 0;
@@ -717,7 +950,7 @@ final class Downstream
                 'pending' => $pending,
                 'api_reads' => (int) (($scan['api_reads'] ?? ($state['last_scan']['api_reads'] ?? 0))),
             ],
-            'warnings' => $warnings,
+            'warnings' => [],
         ];
     }
 

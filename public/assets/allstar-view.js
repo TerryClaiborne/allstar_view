@@ -17,11 +17,9 @@
 
     const elements = {
         connections: document.getElementById('allstar-view-connections'),
-        warning: document.getElementById('allstar-view-warning'),
         directCount: document.getElementById('allstar-view-direct-count'),
         directNote: document.getElementById('allstar-view-direct-note'),
         downstream: document.getElementById('allstar-view-downstream'),
-        downstreamWarning: document.getElementById('allstar-view-downstream-warning'),
         downstreamCount: document.getElementById('allstar-view-downstream-count'),
         downstreamNote: document.getElementById('allstar-view-downstream-note'),
         downstreamFilters: Array.from(document.querySelectorAll('[data-downstream-filter]')),
@@ -520,9 +518,10 @@
 
         elements.activity.innerHTML = visibleActivity.map((event) => {
             const identity = activityIdentity(event);
-            const sourceLabel = String(event.kind || '') === 'asl'
+            const activityKind = String(event.kind || '');
+            const sourceLabel = activityKind === 'asl'
                 ? 'ASL'
-                : String(event.source || '').trim();
+                : (activityKind === 'echo' ? '' : String(event.source || '').trim());
             const eventKey = activityEventKey(event);
             const selected = state.selectedType === 'activity' && state.selectedKey === eventKey ? ' is-selected' : '';
             const duration = Number(event.duration_seconds || 0);
@@ -1126,12 +1125,6 @@
         if (elements.keyedNote) elements.keyedNote.textContent = Number(summary.keyed || 0) > 0 ? 'Current keyed connections' : 'No connection keyed';
         if (elements.refreshTime) elements.refreshTime.textContent = formatTime(snapshot.timestamp);
 
-        const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean) : [];
-        if (elements.warning) {
-            elements.warning.hidden = warnings.length === 0;
-            elements.warning.textContent = warnings.join(' ');
-        }
-
         scheduleEchoLinkLookup();
     }
 
@@ -1213,36 +1206,11 @@
 
         updateDownstreamSummary();
 
-        const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean) : [];
-        if (elements.downstreamWarning) {
-            elements.downstreamWarning.hidden = warnings.length === 0;
-            elements.downstreamWarning.textContent = warnings.join(' ');
-        }
-
         renderDownstream();
         renderDetails(selectedItem());
         scheduleEchoLinkLookup();
     }
 
-    function renderLocalFailure(message) {
-        if (elements.directNote) elements.directNote.textContent = 'Local status unavailable';
-        if (elements.keyedNote) elements.keyedNote.textContent = 'Waiting for local status';
-        if (elements.refreshTime) elements.refreshTime.textContent = 'Retrying…';
-        if (elements.refreshNote) elements.refreshNote.textContent = 'The page remains available';
-        if (elements.warning) {
-            elements.warning.hidden = false;
-            elements.warning.textContent = message;
-        }
-        renderConnectionEmpty('Local connection status is unavailable', 'AllStar View will retry automatically without reloading the page.');
-    }
-
-    function renderDownstreamFailure(message) {
-        if (elements.downstreamNote) elements.downstreamNote.textContent = 'Cached tree retained · retrying';
-        if (elements.downstreamWarning) {
-            elements.downstreamWarning.hidden = false;
-            elements.downstreamWarning.textContent = message;
-        }
-    }
 
     async function refreshLocal() {
         if (state.localLoading || document.hidden) {
@@ -1267,7 +1235,7 @@
             if (error?.name === 'AbortError' && state.localSnapshotLoaded) {
                 return;
             }
-            renderLocalFailure(error?.name === 'AbortError' ? 'Local status timed out and will retry.' : 'Local status could not be read and will retry.');
+            // Keep the last successful snapshot and retry quietly.
         } finally {
             window.clearTimeout(timeout);
             state.localLoading = false;
@@ -1294,7 +1262,7 @@
             }
             renderDownstreamSnapshot(payload.data);
         } catch (error) {
-            renderDownstreamFailure(error?.name === 'AbortError' ? 'Downstream lookup timed out; the cached tree remains visible.' : 'Downstream lookup failed; the cached tree remains visible.');
+            // Keep the last successful tree and retry quietly.
         } finally {
             window.clearTimeout(timeout);
             state.downstreamLoading = false;

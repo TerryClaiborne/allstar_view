@@ -15,6 +15,10 @@ case "${1:-}" in
         [[ $# -eq 2 && "$2" =~ ^[0-9]{1,6}$ ]] || exit 2
         exec "$ASTERISK" -rx "echolink dbget nodename $2"
         ;;
+    rpt-lstats)
+        [[ $# -eq 2 && "$2" =~ ^[0-9]{4,6}$ ]] || exit 2
+        exec "$ASTERISK" -rx "rpt lstats $2"
+        ;;
     *)
         echo "Unsupported read action." >&2
         exit 2

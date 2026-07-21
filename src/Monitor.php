@@ -65,7 +65,6 @@ final class Monitor
         $started = microtime(true);
         $myNode = trim((string) $this->config->get('MYNODE', ''));
         $privateNode = trim((string) $this->config->get('DVSWITCH_NODE', ''));
-        $warnings = [];
 
         if ($myNode === '' || preg_match('/^\d+$/', $myNode) !== 1) {
             return [
@@ -75,22 +74,16 @@ final class Monitor
                 'node' => $myNode,
                 'connections' => [],
                 'summary' => ['direct' => 0, 'keyed' => 0, 'hidden_private' => 0],
-                'warnings' => ['MYNODE is not configured.'],
+                'warnings' => [],
                 'sources' => ['ami' => false, 'iax' => false],
             ];
         }
 
         $ami = $this->fetchAmiLinks($myNode);
         $links = $ami['links'];
-        if (!$ami['available']) {
-            $warnings[] = 'AMI status was unavailable.';
-        }
-
         $iax = $this->readIaxChannels($myNode);
         if ($iax['available']) {
             $links = $this->mergeIaxLinks($links, $iax['channels'], $myNode);
-        } else {
-            $warnings[] = 'IAX channel detail was unavailable.';
         }
 
         $hiddenPrivate = 0;
@@ -135,7 +128,7 @@ final class Monitor
                 'keyed' => count(array_filter($connections, static fn (array $item): bool => !empty($item['keyed']))),
                 'hidden_private' => $hiddenPrivate,
             ],
-            'warnings' => $warnings,
+            'warnings' => [],
             'sources' => [
                 'ami' => $ami['available'],
                 'iax' => $iax['available'],

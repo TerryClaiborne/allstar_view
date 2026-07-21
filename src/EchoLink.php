@@ -46,7 +46,6 @@ final class EchoLink
         }
 
         $updated = false;
-        $warnings = [];
         if ($lookupIdentifier !== '') {
             $lock = @fopen($root . self::LOCK_FILE, 'c');
             if ($lock !== false && @flock($lock, LOCK_EX | LOCK_NB)) {
@@ -56,15 +55,11 @@ final class EchoLink
                     $key = $this->identifierKey($lookupIdentifier);
                     if (empty($result['request_ok']) && is_array($existing) && !empty($existing['found'])) {
                         $entries[$key] = $this->publicEntry($existing);
-                        $warnings[] = 'EchoLink identity refresh was unavailable; the last resolved identity is retained.';
                     } else {
                         $this->writeCache($root, $lookupIdentifier, $result);
                         $this->writeResolvedAliases($root, $result);
                         $entries[$key] = $this->publicEntry($result);
                         $updated = true;
-                        if (empty($result['found'])) {
-                            $warnings[] = 'EchoLink identity lookup did not return a match for ' . $lookupIdentifier . '.';
-                        }
                     }
                 } finally {
                     @flock($lock, LOCK_UN);
@@ -89,7 +84,7 @@ final class EchoLink
             'updated' => $updated,
             'pending' => $pending,
             'retry_after_seconds' => $pending > 0 ? $this->retryAfterSeconds($root, $identifiers) : 0,
-            'warnings' => $warnings,
+            'warnings' => [],
         ];
     }
 

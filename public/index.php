@@ -29,6 +29,8 @@ $localVersion = $localVersion !== '' ? $localVersion : '0.0.0';
 $myNode = trim($config->getString('MYNODE', ''));
 $myNodeIsValid = preg_match('/^[0-9]+$/', $myNode) === 1;
 $myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawurlencode($myNode) : '';
+$allStarViewCssVersion = substr((string) @hash_file('sha256', $root . '/public/assets/allstar-view.css'), 0, 12) ?: $localVersion;
+$allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/assets/allstar-view.js'), 0, 12) ?: $localVersion;
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -47,7 +49,7 @@ $myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawu
         }());
     </script>
     <link rel="stylesheet" href="/allstar_view/public/assets/app-shell.css">
-    <link rel="stylesheet" href="/allstar_view/public/assets/allstar-view.css">
+    <link rel="stylesheet" href="/allstar_view/public/assets/allstar-view.css?v=<?= e($allStarViewCssVersion) ?>">
 </head>
 <body>
 <div class="page">
@@ -166,7 +168,6 @@ $myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawu
                             <p>The page is ready while the local Asterisk snapshot is collected separately.</p>
                         </div>
                     </div>
-                    <div id="allstar-view-warning" class="allstar-view-inline-warning" hidden></div>
                 </div>
             </article>
 
@@ -190,7 +191,6 @@ $myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawu
                             <p>Local status remains fast while the complete downstream tree is scanned separately in cached background steps.</p>
                         </div>
                     </div>
-                    <div id="allstar-view-downstream-warning" class="allstar-view-inline-warning" hidden></div>
                 </div>
             </article>
 
@@ -249,6 +249,6 @@ $myNodeStatsUrl = $myNodeIsValid ? 'https://stats.allstarlink.org/stats/' . rawu
 </div>
 <script src="/allstar_view/public/assets/header.js"></script>
 <script src="/allstar_view/public/assets/audio-alerts.js"></script>
-<script src="/allstar_view/public/assets/allstar-view.js"></script>
+<script src="/allstar_view/public/assets/allstar-view.js?v=<?= e($allStarViewJsVersion) ?>"></script>
 </body>
 </html>
