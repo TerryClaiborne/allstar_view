@@ -174,15 +174,28 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
             <article class="card allstar-view-card allstar-view-card-downstream">
                 <div class="card-header">
                     <span>Downstream Nodes</span>
-                    <span class="meta-line">Grouped by direct node</span>
+                    <div class="allstar-view-downstream-header-actions">
+                        <span class="meta-line allstar-view-downstream-flow-label">
+                            <span class="allstar-view-downstream-flow-label-desktop">Direct-node groups &middot; Color-coded flow</span>
+                            <span class="allstar-view-downstream-flow-label-mobile">Color-coded flow</span>
+                        </span>
+                        <button
+                            type="button"
+                            class="allstar-view-downstream-expand"
+                            id="allstar-view-downstream-expand"
+                            aria-controls="allstar-view-downstream-window"
+                            aria-expanded="false"
+                            title="Open a movable expanded Downstream Nodes window"
+                        ><span aria-hidden="true">&#10530;</span>Expand</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="allstar-view-downstream-filters" role="group" aria-label="Filter downstream connections">
-                        <button type="button" class="allstar-view-downstream-filter is-active" data-downstream-filter="all" aria-pressed="true">All <strong id="allstar-view-filter-all-count">0</strong></button>
-                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="nodes" aria-pressed="false">Nodes <strong id="allstar-view-filter-nodes-count">0</strong></button>
-                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="private" aria-pressed="false">Pvt Nodes <strong id="allstar-view-filter-private-count">0</strong></button>
-                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="clients" aria-pressed="false">Web/Clients <strong id="allstar-view-filter-clients-count">0</strong></button>
-                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="echolink" aria-pressed="false">EchoLink <strong id="allstar-view-filter-echolink-count">0</strong></button>
+                        <button type="button" class="allstar-view-downstream-filter is-active" data-downstream-filter="all" aria-pressed="true">All <strong id="allstar-view-filter-all-count" data-downstream-filter-count="all">0</strong></button>
+                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="nodes" aria-pressed="false">Nodes <strong id="allstar-view-filter-nodes-count" data-downstream-filter-count="nodes">0</strong></button>
+                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="private" aria-pressed="false">Pvt Nodes <strong id="allstar-view-filter-private-count" data-downstream-filter-count="private">0</strong></button>
+                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="clients" aria-pressed="false">Web/Clients <strong id="allstar-view-filter-clients-count" data-downstream-filter-count="clients">0</strong></button>
+                        <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="echolink" aria-pressed="false">EchoLink <strong id="allstar-view-filter-echolink-count" data-downstream-filter-count="echolink">0</strong></button>
                     </div>
                     <div id="allstar-view-downstream" class="allstar-view-downstream-list allstar-view-scroll-panel" aria-live="polite" aria-busy="true" tabindex="0">
                         <div class="allstar-view-empty allstar-view-empty-compact">
@@ -240,12 +253,63 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
                         Select a connection, downstream node, or activity entry to see its details.
                     </div>
                     <div class="allstar-view-detail-links" id="allstar-view-detail-links" hidden>
-                        <a id="allstar-view-detail-qrz" href="#" target="_blank" rel="noopener">QRZ</a>
+                        <a id="allstar-view-detail-qrz" href="#" target="_blank" rel="noopener">QRZ Page</a>
                     </div>
                 </div>
             </article>
         </section>
     </main>
+
+    <section
+        class="allstar-view-downstream-window"
+        id="allstar-view-downstream-window"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="allstar-view-downstream-window-title"
+        tabindex="-1"
+        hidden
+    >
+        <div class="allstar-view-downstream-window-header" id="allstar-view-downstream-window-handle">
+            <div class="allstar-view-downstream-window-heading">
+                <strong id="allstar-view-downstream-window-title">Downstream Nodes</strong>
+                <span>Direct-node groups &middot; Color-coded flow</span>
+            </div>
+            <span
+                class="allstar-view-downstream-window-move-cue"
+                role="img"
+                aria-label="Hold down the mouse button to drag and move the window"
+                title="Hold down the mouse button to drag and move the window"
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 2v20M2 12h20M8.5 5.5 12 2l3.5 3.5M8.5 18.5 12 22l3.5-3.5M5.5 8.5 2 12l3.5 3.5M18.5 8.5 22 12l-3.5 3.5" />
+                </svg>
+            </span>
+            <button
+                type="button"
+                class="allstar-view-downstream-window-close"
+                id="allstar-view-downstream-window-close"
+                aria-label="Close expanded Downstream Nodes window"
+                title="Close"
+            >&times;</button>
+        </div>
+        <div class="allstar-view-downstream-window-body">
+            <div class="allstar-view-downstream-filters allstar-view-downstream-window-filters" role="group" aria-label="Filter expanded downstream connections">
+                <button type="button" class="allstar-view-downstream-filter is-active" data-downstream-filter="all" aria-pressed="true">All <strong data-downstream-filter-count="all">0</strong></button>
+                <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="nodes" aria-pressed="false">Nodes <strong data-downstream-filter-count="nodes">0</strong></button>
+                <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="private" aria-pressed="false">Pvt Nodes <strong data-downstream-filter-count="private">0</strong></button>
+                <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="clients" aria-pressed="false">Web/Clients <strong data-downstream-filter-count="clients">0</strong></button>
+                <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="echolink" aria-pressed="false">EchoLink <strong data-downstream-filter-count="echolink">0</strong></button>
+            </div>
+            <div id="allstar-view-downstream-expanded" class="allstar-view-downstream-list allstar-view-scroll-panel allstar-view-downstream-window-list" aria-live="polite" aria-busy="true" tabindex="0">
+                <div class="allstar-view-empty allstar-view-empty-compact">
+                    <span class="allstar-view-empty-icon" aria-hidden="true">&#9670;</span>
+                    <strong>Loading cached downstream tree…</strong>
+                    <p>The expanded window uses the same downstream data already loaded by the page.</p>
+                </div>
+            </div>
+            <div class="allstar-view-downstream-window-hint">Click any row to update Node Details. Use the lower-right corner to resize.</div>
+        </div>
+    </section>
 </div>
 <script src="/allstar_view/public/assets/header.js"></script>
 <script src="/allstar_view/public/assets/audio-alerts.js"></script>

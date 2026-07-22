@@ -41,6 +41,8 @@ AllStar View can display:
 - Web/Phone clients
 - live Connect, Key, Unkey, and Disconnect activity
 - grouped downstream trees for each directly connected node
+- color-coded downstream branches that make multi-level paths easier to follow
+- a movable, resizable expanded Downstream Nodes window on desktop
 - private nodes beneath the connection path they belong to
 - full clickable connection paths
 - node and callsign details
@@ -65,6 +67,14 @@ The Downstream Nodes panel includes filters for:
 Each filter shows the matching live count.
 
 Clicking a direct connection brings that connection’s downstream group into view. Clicking a downstream row opens its available details.
+
+On desktop, use **Expand** to open a taller, scrollable Downstream Nodes window. Hold down the mouse button on the move control to drag it, and use the lower-right corner to resize it. The normal and expanded lists stay synchronized, and the color-coded branch lines make nested paths easier to follow on desktop and cellphone.
+
+---
+
+## Local Node in Downstream Flow
+
+When another downstream node reports the configured local node, AllStar View may show that local node in the downstream path. It will not recursively scan through the local node, which prevents loops while preserving the visible connection flow.
 
 ---
 

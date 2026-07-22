@@ -10,6 +10,7 @@
     const downstreamEndpoint = String(page.dataset.downstreamEndpoint || '').trim();
     const echoLinkEndpoint = String(page.dataset.echolinkEndpoint || '').trim();
     const mobileActivityMedia = window.matchMedia('(max-width: 760px)');
+    const desktopDownstreamMedia = window.matchMedia('(min-width: 761px)');
     const MOBILE_ACTIVITY_LIMIT = 8;
     if (!localEndpoint) {
         return;
@@ -20,14 +21,21 @@
         directCount: document.getElementById('allstar-view-direct-count'),
         directNote: document.getElementById('allstar-view-direct-note'),
         downstream: document.getElementById('allstar-view-downstream'),
+        downstreamExpanded: document.getElementById('allstar-view-downstream-expanded'),
+        downstreamWindow: document.getElementById('allstar-view-downstream-window'),
+        downstreamWindowHandle: document.getElementById('allstar-view-downstream-window-handle'),
+        downstreamWindowClose: document.getElementById('allstar-view-downstream-window-close'),
+        downstreamExpand: document.getElementById('allstar-view-downstream-expand'),
         downstreamCount: document.getElementById('allstar-view-downstream-count'),
         downstreamNote: document.getElementById('allstar-view-downstream-note'),
         downstreamFilters: Array.from(document.querySelectorAll('[data-downstream-filter]')),
-        filterAllCount: document.getElementById('allstar-view-filter-all-count'),
-        filterNodesCount: document.getElementById('allstar-view-filter-nodes-count'),
-        filterPrivateCount: document.getElementById('allstar-view-filter-private-count'),
-        filterClientsCount: document.getElementById('allstar-view-filter-clients-count'),
-        filterEchoLinkCount: document.getElementById('allstar-view-filter-echolink-count'),
+        downstreamFilterCounts: {
+            all: Array.from(document.querySelectorAll('[data-downstream-filter-count="all"]')),
+            nodes: Array.from(document.querySelectorAll('[data-downstream-filter-count="nodes"]')),
+            private: Array.from(document.querySelectorAll('[data-downstream-filter-count="private"]')),
+            clients: Array.from(document.querySelectorAll('[data-downstream-filter-count="clients"]')),
+            echolink: Array.from(document.querySelectorAll('[data-downstream-filter-count="echolink"]')),
+        },
         keyedCount: document.getElementById('allstar-view-keyed-count'),
         keyedNote: document.getElementById('allstar-view-keyed-note'),
         refreshTime: document.getElementById('allstar-view-refresh-time'),
@@ -71,6 +79,163 @@
         downstreamCache: {},
         echoLinkEntries: {},
     };
+
+    function downstreamLists() {
+        return [elements.downstream, elements.downstreamExpanded].filter(Boolean);
+    }
+
+    function syncDownstreamSelection(sourceList, attribute, key) {
+        const selectedKey = String(key || '');
+        if (!selectedKey) {
+            return;
+        }
+
+        window.requestAnimationFrame(() => {
+            for (const list of downstreamLists()) {
+                if (list === sourceList || list.clientHeight === 0) {
+                    continue;
+                }
+
+                const target = list.querySelector(`[${attribute}="${CSS.escape(selectedKey)}"]`);
+                if (!target) {
+                    continue;
+                }
+
+                const listRect = list.getBoundingClientRect();
+                const targetRect = target.getBoundingClientRect();
+                const padding = 8;
+                let nextTop = list.scrollTop;
+
+                if (targetRect.top < listRect.top + padding) {
+                    nextTop -= (listRect.top + padding) - targetRect.top;
+                } else if (targetRect.bottom > listRect.bottom - padding) {
+                    nextTop += targetRect.bottom - (listRect.bottom - padding);
+                }
+
+                if (Math.abs(nextTop - list.scrollTop) >= 1) {
+                    list.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
+                }
+            }
+        });
+    }
+
+    function setDownstreamWindowOpen(open, returnFocus = false) {
+        if (!elements.downstreamWindow || !elements.downstreamExpand) {
+            return;
+        }
+
+        const shouldOpen = Boolean(open) && desktopDownstreamMedia.matches;
+        elements.downstreamWindow.hidden = !shouldOpen;
+        elements.downstreamExpand.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        elements.downstreamExpand.classList.toggle('is-active', shouldOpen);
+
+        if (shouldOpen) {
+            window.requestAnimationFrame(() => {
+                constrainDownstreamWindow();
+                elements.downstreamWindowClose?.focus({ preventScroll: true });
+            });
+        } else if (returnFocus && desktopDownstreamMedia.matches) {
+            elements.downstreamExpand.focus({ preventScroll: true });
+        }
+    }
+
+    function constrainDownstreamWindow() {
+        const panel = elements.downstreamWindow;
+        if (!panel || panel.hidden || !desktopDownstreamMedia.matches) {
+            return;
+        }
+
+        const rect = panel.getBoundingClientRect();
+        const margin = 8;
+        const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+        const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+        const left = Math.min(maxLeft, Math.max(margin, rect.left));
+        const top = Math.min(maxTop, Math.max(margin, rect.top));
+        panel.style.left = `${Math.round(left)}px`;
+        panel.style.top = `${Math.round(top)}px`;
+        panel.style.right = 'auto';
+    }
+
+    let downstreamWindowDrag = null;
+
+    function beginDownstreamWindowDrag(event) {
+        const panel = elements.downstreamWindow;
+        const handle = elements.downstreamWindowHandle;
+        if (!panel || !handle || panel.hidden || event.button !== 0 || event.target.closest('button')) {
+            return;
+        }
+
+        const rect = panel.getBoundingClientRect();
+        panel.style.left = `${Math.round(rect.left)}px`;
+        panel.style.top = `${Math.round(rect.top)}px`;
+        panel.style.right = 'auto';
+        downstreamWindowDrag = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - rect.left,
+            offsetY: event.clientY - rect.top,
+        };
+        handle.setPointerCapture?.(event.pointerId);
+        panel.classList.add('is-dragging');
+        event.preventDefault();
+    }
+
+    function moveDownstreamWindow(event) {
+        const panel = elements.downstreamWindow;
+        if (!panel || !downstreamWindowDrag || event.pointerId !== downstreamWindowDrag.pointerId) {
+            return;
+        }
+
+        const rect = panel.getBoundingClientRect();
+        const margin = 8;
+        const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+        const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+        const left = Math.min(maxLeft, Math.max(margin, event.clientX - downstreamWindowDrag.offsetX));
+        const top = Math.min(maxTop, Math.max(margin, event.clientY - downstreamWindowDrag.offsetY));
+        panel.style.left = `${Math.round(left)}px`;
+        panel.style.top = `${Math.round(top)}px`;
+        event.preventDefault();
+    }
+
+    function endDownstreamWindowDrag(event) {
+        const panel = elements.downstreamWindow;
+        const handle = elements.downstreamWindowHandle;
+        if (!downstreamWindowDrag || event.pointerId !== downstreamWindowDrag.pointerId) {
+            return;
+        }
+
+        handle?.releasePointerCapture?.(event.pointerId);
+        downstreamWindowDrag = null;
+        panel?.classList.remove('is-dragging');
+        constrainDownstreamWindow();
+    }
+
+    elements.downstreamExpand?.addEventListener('click', () => {
+        setDownstreamWindowOpen(elements.downstreamWindow?.hidden !== false);
+    });
+    elements.downstreamWindowClose?.addEventListener('click', () => setDownstreamWindowOpen(false, true));
+    elements.downstreamWindowHandle?.addEventListener('pointerdown', beginDownstreamWindowDrag);
+    window.addEventListener('pointermove', moveDownstreamWindow);
+    window.addEventListener('pointerup', endDownstreamWindowDrag);
+    window.addEventListener('pointercancel', endDownstreamWindowDrag);
+    window.addEventListener('resize', constrainDownstreamWindow);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && elements.downstreamWindow?.hidden === false) {
+            setDownstreamWindowOpen(false, true);
+        }
+    });
+
+    const handleDownstreamViewportChange = () => {
+        if (!desktopDownstreamMedia.matches) {
+            setDownstreamWindowOpen(false);
+        } else {
+            constrainDownstreamWindow();
+        }
+    };
+    if (typeof desktopDownstreamMedia.addEventListener === 'function') {
+        desktopDownstreamMedia.addEventListener('change', handleDownstreamViewportChange);
+    } else if (typeof desktopDownstreamMedia.addListener === 'function') {
+        desktopDownstreamMedia.addListener(handleDownstreamViewportChange);
+    }
 
     function escapeHtml(value) {
         return String(value ?? '')
@@ -595,11 +760,18 @@
 
     function updateDownstreamFilters() {
         const counts = downstreamFilterCounts();
-        if (elements.filterAllCount) elements.filterAllCount.textContent = String(counts.all);
-        if (elements.filterNodesCount) elements.filterNodesCount.textContent = String(counts.nodes);
-        if (elements.filterPrivateCount) elements.filterPrivateCount.textContent = String(counts.privateNodes);
-        if (elements.filterClientsCount) elements.filterClientsCount.textContent = String(counts.clients);
-        if (elements.filterEchoLinkCount) elements.filterEchoLinkCount.textContent = String(counts.echolink);
+        const values = {
+            all: counts.all,
+            nodes: counts.nodes,
+            private: counts.privateNodes,
+            clients: counts.clients,
+            echolink: counts.echolink,
+        };
+        for (const [filter, value] of Object.entries(values)) {
+            for (const count of elements.downstreamFilterCounts[filter] || []) {
+                count.textContent = String(value);
+            }
+        }
         for (const button of elements.downstreamFilters) {
             const active = String(button.dataset.downstreamFilter || '') === state.downstreamFilter;
             button.classList.toggle('is-active', active);
@@ -676,23 +848,26 @@
     }
 
     function renderDownstreamEmpty(title, detail) {
-        if (!elements.downstream) {
-            return;
-        }
-        elements.downstream.innerHTML = `
+        const markup = `
             <div class="allstar-view-empty allstar-view-empty-compact">
                 <span class="allstar-view-empty-icon" aria-hidden="true">&#9670;</span>
                 <strong>${escapeHtml(title)}</strong>
                 <p>${escapeHtml(detail)}</p>
             </div>`;
+        for (const list of downstreamLists()) {
+            list.innerHTML = markup;
+        }
     }
 
     function renderDownstream() {
-        if (!elements.downstream) {
+        const lists = downstreamLists();
+        if (!lists.length) {
             return;
         }
 
-        elements.downstream.setAttribute('aria-busy', 'false');
+        for (const list of lists) {
+            list.setAttribute('aria-busy', 'false');
+        }
         updateDownstreamFilters();
 
         const renderSignature = downstreamRenderSignature();
@@ -752,7 +927,8 @@
             }
         }
 
-        elements.downstream.innerHTML = sections.map((section) => {
+        const scrollPositions = new Map(lists.map((list) => [list, list.scrollTop]));
+        const markup = sections.map((section) => {
             if (section.type === 'remote') {
                 const clients = section.clients;
                 const prioritized = state.preferredRemoteClients ? ' is-prioritized' : '';
@@ -802,11 +978,12 @@
                 const branch = index === orderedChildren.length - 1 ? '&#9492;&#9472;' : '&#9500;&#9472;';
                 const depth = Math.max(1, Number(item.depth || 1));
                 const depthClass = depth >= 5 ? 'depth-deep' : `depth-${depth}`;
+                const nestedClass = depth >= 2 ? ' is-nested-branch' : '';
                 if (isDownstreamWebPhoneClient(item)) {
                     const callsign = item.callsign || webPhoneCallsign(item.node);
                     const secondary = `${callsign || item.node} · Web/Phone Client · Parent ${item.parent_node || root.node}`;
                     return `
-                        <button type="button" class="allstar-view-downstream-row allstar-view-downstream-remote-row ${depthClass}${selected}" data-downstream-key="${escapeHtml(item.key)}">
+                        <button type="button" class="allstar-view-downstream-row allstar-view-downstream-remote-row ${depthClass}${nestedClass}${selected}" data-downstream-key="${escapeHtml(item.key)}">
                             <span class="allstar-view-downstream-branch" aria-hidden="true">${branch}</span>
                             <span class="tree-dot tree-dot-remote" aria-hidden="true"></span>
                             <span class="allstar-view-downstream-main">
@@ -824,7 +1001,7 @@
                     const callsign = String(item.callsign || '').trim();
                     const secondary = `${callsign || `EchoLink node ${item.node}`} · ${echoLinkDescription(callsign)} · Parent ${item.parent_node || root.node}`;
                     return `
-                        <button type="button" class="allstar-view-downstream-row ${depthClass}${selected}" data-downstream-key="${escapeHtml(item.key)}">
+                        <button type="button" class="allstar-view-downstream-row ${depthClass}${nestedClass}${selected}" data-downstream-key="${escapeHtml(item.key)}">
                             <span class="allstar-view-downstream-branch" aria-hidden="true">${branch}</span>
                             <span class="tree-dot tree-dot-depth-one" aria-hidden="true"></span>
                             <span class="allstar-view-downstream-main">
@@ -842,9 +1019,11 @@
                 const privateChip = Boolean(item.is_private)
                     ? '<span class="allstar-view-chip chip-private">Pvt Node</span>'
                     : `<span class="allstar-view-chip ${modeClass(item.mode)}">${escapeHtml(item.mode_label)}</span>`;
-                const privateDot = Boolean(item.is_private) ? 'tree-dot-private' : 'tree-dot-depth-one';
+                const privateDot = Boolean(item.is_private)
+                    ? 'tree-dot-private'
+                    : (depth >= 2 ? 'tree-dot-depth-one tree-dot-nested' : 'tree-dot-depth-one');
                 return `
-                    <button type="button" class="allstar-view-downstream-row ${depthClass}${privateClass}${selected}" data-downstream-key="${escapeHtml(item.key)}">
+                    <button type="button" class="allstar-view-downstream-row ${depthClass}${nestedClass}${privateClass}${selected}" data-downstream-key="${escapeHtml(item.key)}">
                         <span class="allstar-view-downstream-branch" aria-hidden="true">${branch}</span>
                         <span class="tree-dot ${privateDot}" aria-hidden="true"></span>
                         <span class="allstar-view-downstream-main">
@@ -875,31 +1054,45 @@
                 </section>`;
         }).join('');
 
+        for (const list of lists) {
+            list.innerHTML = markup;
+            if (!state.scrollDownstreamOnRender) {
+                list.scrollTop = scrollPositions.get(list) || 0;
+            }
+        }
 
         if (state.scrollDownstreamOnRender) {
-            let target = null;
-            if (state.preferredRemoteClients) {
-                target = elements.downstream.querySelector('[data-downstream-group="remote-clients"]');
-            } else if (state.preferredDirectNode) {
-                target = Array.from(elements.downstream.querySelectorAll('[data-direct-node]'))
-                    .find((group) => String(group.dataset.directNode || '') === state.preferredDirectNode) || null;
+            const targets = [];
+            for (const list of lists) {
+                let target = null;
+                if (state.preferredRemoteClients) {
+                    target = list.querySelector('[data-downstream-group="remote-clients"]');
+                } else if (state.preferredDirectNode) {
+                    target = Array.from(list.querySelectorAll('[data-direct-node]'))
+                        .find((group) => String(group.dataset.directNode || '') === state.preferredDirectNode) || null;
+                }
+                if (target) {
+                    list.scrollTo({ top: 0, behavior: 'smooth' });
+                    target.classList.add('is-focus-flash');
+                    targets.push(target);
+                }
             }
 
-            if (target) {
+            if (targets.length) {
                 state.scrollDownstreamOnRender = false;
-                elements.downstream.scrollTo({ top: 0, behavior: 'smooth' });
-                target.classList.add('is-focus-flash');
                 window.clearTimeout(state.downstreamHighlightTimer);
                 state.downstreamHighlightTimer = window.setTimeout(() => {
-                    target.classList.remove('is-focus-flash');
+                    for (const target of targets) {
+                        target.classList.remove('is-focus-flash');
+                    }
                 }, 1600);
             }
         }
     }
 
-    elements.downstream?.addEventListener('click', (event) => {
+    function handleDownstreamClick(container, event) {
         const row = event.target.closest('[data-downstream-root-key], [data-downstream-key], [data-remote-client-key]');
-        if (!row || !elements.downstream.contains(row)) {
+        if (!row || !container.contains(row)) {
             return;
         }
 
@@ -909,6 +1102,7 @@
             if (item) {
                 prioritizeDownstream(item.node);
                 selectItem(item, 'root');
+                syncDownstreamSelection(container, 'data-downstream-root-key', rootKey);
             }
             return;
         }
@@ -916,7 +1110,10 @@
         const downstreamKey = String(row.dataset.downstreamKey || '');
         if (downstreamKey) {
             const item = state.downstreamNodes.find((entry) => entry.key === downstreamKey);
-            if (item) selectItem(item, 'downstream');
+            if (item) {
+                selectItem(item, 'downstream');
+                syncDownstreamSelection(container, 'data-downstream-key', downstreamKey);
+            }
             return;
         }
 
@@ -925,8 +1122,13 @@
         if (item) {
             prioritizeRemoteClients();
             selectItem(item, 'current');
+            syncDownstreamSelection(container, 'data-remote-client-key', clientKey);
         }
-    });
+    }
+
+    for (const list of downstreamLists()) {
+        list.addEventListener('click', (event) => handleDownstreamClick(list, event));
+    }
 
     function setLink(element, url, visible) {
         if (!element) {
@@ -1277,7 +1479,9 @@
             }
             state.downstreamFilter = filter;
             state.scrollDownstreamOnRender = false;
-            if (elements.downstream) elements.downstream.scrollTop = 0;
+            for (const list of downstreamLists()) {
+                list.scrollTop = 0;
+            }
             renderDownstream();
         });
     }

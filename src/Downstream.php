@@ -734,7 +734,7 @@ final class Downstream
 
                 if ($kind === 'asl') {
                     $node = $this->digits($rawNode);
-                    if ($node === '' || $node === $localNode || $node === $directNode) {
+                    if ($node === '' || $node === $directNode) {
                         continue;
                     }
 
