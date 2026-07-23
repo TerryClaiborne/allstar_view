@@ -105,27 +105,26 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
     >
         <h2 id="allstar-view-title" class="sr-only">AllStar View</h2>
 
-        <section class="allstar-view-summary" aria-label="AllStar View summary">
-            <article class="allstar-view-summary-card allstar-view-summary-direct">
-                <span class="allstar-view-summary-label">Direct Connections</span>
-                <strong id="allstar-view-direct-count">—</strong>
-                <span id="allstar-view-direct-note">Loading local Asterisk data</span>
-            </article>
-            <article class="allstar-view-summary-card allstar-view-summary-downstream">
-                <span class="allstar-view-summary-label">Downstream Connections</span>
-                <strong id="allstar-view-downstream-count">—</strong>
-                <span id="allstar-view-downstream-note">Loading cached tree</span>
-            </article>
-            <article class="allstar-view-summary-card allstar-view-summary-keyed">
-                <span class="allstar-view-summary-label">Keyed Now</span>
-                <strong id="allstar-view-keyed-count">—</strong>
-                <span id="allstar-view-keyed-note">Waiting for local status</span>
-            </article>
-            <article class="allstar-view-summary-card allstar-view-summary-refresh">
-                <span class="allstar-view-summary-label">Last Refresh</span>
-                <strong id="allstar-view-refresh-time">Starting…</strong>
-                <span id="allstar-view-refresh-note">Local status snapshot</span>
-            </article>
+        <section class="allstar-view-status-ribbon" aria-label="AllStar View status">
+            <div class="allstar-view-status-ribbon-track">
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-node">
+                    <span class="allstar-view-status-ribbon-label">Node</span>
+                    <strong><?= $myNodeIsValid ? e($myNode) : '—' ?></strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-time">
+                    <span class="allstar-view-status-ribbon-label">Date &amp; Time</span>
+                    <strong id="allstar-view-current-time">—</strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-connections">
+                    <span class="allstar-view-status-ribbon-label">Live Connections</span>
+                    <strong id="allstar-view-direct-count">—</strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-downstream">
+                    <span class="allstar-view-status-ribbon-label">Downstream</span>
+                    <strong id="allstar-view-downstream-count">—</strong>
+                    <span id="allstar-view-downstream-note" class="allstar-view-status-ribbon-note">Loading tree</span>
+                </div>
+            </div>
         </section>
 
         <section class="allstar-view-grid">

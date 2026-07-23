@@ -25,7 +25,11 @@ final class NodeIdentity
 
     public static function qrzCallsign(string $value): string
     {
-        return preg_match('/\b([A-Z]{1,3}[0-9][A-Z0-9]{1,4})\b/', strtoupper(trim($value)), $match) === 1
+        $identity = strtoupper(trim($value));
+        if (preg_match('/^\*[A-Z0-9_.\/-]+\*$/', $identity) === 1) {
+            return '';
+        }
+        return preg_match('/\b([A-Z]{1,3}[0-9][A-Z0-9]{1,4})\b/', $identity, $match) === 1
             ? $match[1]
             : '';
     }

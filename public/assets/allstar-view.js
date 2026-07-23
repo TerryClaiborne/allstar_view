@@ -19,7 +19,6 @@
     const elements = {
         connections: document.getElementById('allstar-view-connections'),
         directCount: document.getElementById('allstar-view-direct-count'),
-        directNote: document.getElementById('allstar-view-direct-note'),
         downstream: document.getElementById('allstar-view-downstream'),
         downstreamExpanded: document.getElementById('allstar-view-downstream-expanded'),
         downstreamWindow: document.getElementById('allstar-view-downstream-window'),
@@ -36,10 +35,7 @@
             clients: Array.from(document.querySelectorAll('[data-downstream-filter-count="clients"]')),
             echolink: Array.from(document.querySelectorAll('[data-downstream-filter-count="echolink"]')),
         },
-        keyedCount: document.getElementById('allstar-view-keyed-count'),
-        keyedNote: document.getElementById('allstar-view-keyed-note'),
-        refreshTime: document.getElementById('allstar-view-refresh-time'),
-        refreshNote: document.getElementById('allstar-view-refresh-note'),
+        currentTime: document.getElementById('allstar-view-current-time'),
         detailNode: document.getElementById('allstar-view-detail-node'),
         detailCall: document.getElementById('allstar-view-detail-call'),
         detailPath: document.getElementById('allstar-view-detail-path'),
@@ -54,6 +50,7 @@
     const state = {
         localTimer: 0,
         downstreamTimer: 0,
+        clockTimer: 0,
         localLoading: false,
         localSnapshotLoaded: false,
         downstreamLoading: false,
@@ -254,6 +251,24 @@
         return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
     }
 
+    function formatCurrentDateTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return '—';
+        }
+
+        const day = date.toLocaleDateString([], {
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+        });
+        const time = date.toLocaleTimeString([], {
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+        return `${day} · ${time}`;
+    }
+
     function activityEventKey(event) {
         const id = String(event?.id || '').trim();
         if (id) {
@@ -263,7 +278,11 @@
     }
 
     function qrzCallsign(value) {
-        const match = String(value || '').toUpperCase().match(/\b([A-Z]{1,3}[0-9][A-Z0-9]{1,4})\b/);
+        const identity = String(value || '').trim().toUpperCase();
+        if (/^\*[A-Z0-9_.\/-]+\*$/.test(identity)) {
+            return '';
+        }
+        const match = identity.match(/\b([A-Z]{1,3}[0-9][A-Z0-9]{1,4})\b/);
         return match ? match[1] : '';
     }
 
@@ -1318,14 +1337,9 @@
         updateDownstreamSummary();
         renderDetails(selectedItem());
 
-        if (elements.directCount) elements.directCount.textContent = String(summary.direct ?? connections.length);
-        if (elements.directNote) {
-            const hidden = Number(summary.hidden_private || 0);
-            elements.directNote.textContent = hidden > 0 ? `${hidden} configured private link hidden` : 'Local Asterisk data';
+        if (elements.directCount) {
+            elements.directCount.textContent = String(summary.direct ?? connections.length);
         }
-        if (elements.keyedCount) elements.keyedCount.textContent = String(summary.keyed ?? 0);
-        if (elements.keyedNote) elements.keyedNote.textContent = Number(summary.keyed || 0) > 0 ? 'Current keyed connections' : 'No connection keyed';
-        if (elements.refreshTime) elements.refreshTime.textContent = formatTime(snapshot.timestamp);
 
         scheduleEchoLinkLookup();
     }
@@ -1357,8 +1371,8 @@
         }
         if (cache.refreshing) {
             elements.downstreamNote.textContent = cache.pending > 0
-                ? `Scanning full tree · ${cache.pending} queued`
-                : 'Finishing full-tree scan';
+                ? `Scanning · ${cache.pending} queued`
+                : 'Finishing scan';
             return;
         }
         if (!cache.updated_at) {
@@ -1366,20 +1380,7 @@
             return;
         }
 
-        const parts = [`${publicCount} ${publicCount === 1 ? 'node' : 'nodes'}`];
-        if (privateCount > 0) {
-            parts.push(`${privateCount} ${privateCount === 1 ? 'pvt node' : 'pvt nodes'}`);
-        }
-        if (clientCount > 0) {
-            parts.push(`${clientCount} ${clientCount === 1 ? 'client' : 'clients'}`);
-        }
-        if (echoCount > 0) {
-            parts.push(`${echoCount} EchoLink`);
-        }
-        if (hidden > 0) {
-            parts.push(`${hidden} filtered`);
-        }
-        elements.downstreamNote.textContent = parts.join(' · ');
+        elements.downstreamNote.textContent = hidden > 0 ? `Tree ready · ${hidden} filtered` : 'Tree ready';
     }
 
     function renderDownstreamSnapshot(snapshot) {
@@ -1486,6 +1487,18 @@
         });
     }
 
+    function updateCurrentTime() {
+        if (elements.currentTime) {
+            elements.currentTime.textContent = formatCurrentDateTime(new Date());
+        }
+    }
+
+    function startClock() {
+        window.clearInterval(state.clockTimer);
+        updateCurrentTime();
+        state.clockTimer = window.setInterval(updateCurrentTime, 1000);
+    }
+
     function schedule() {
         window.clearInterval(state.localTimer);
         window.clearInterval(state.downstreamTimer);
@@ -1495,12 +1508,14 @@
 
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
+            updateCurrentTime();
             refreshLocal();
             refreshDownstream();
             scheduleEchoLinkLookup();
         }
     });
 
+    startClock();
     refreshLocal();
     window.setTimeout(refreshDownstream, 800);
     schedule();
