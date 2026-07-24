@@ -105,21 +105,45 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
     >
         <h2 id="allstar-view-title" class="sr-only">AllStar View</h2>
 
-        <section class="allstar-view-status-ribbon" aria-label="AllStar View status">
+        <section class="allstar-view-status-ribbon" aria-label="AllStar View system status">
             <div class="allstar-view-status-ribbon-track">
                 <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-node">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 3h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H9.5L7 13.5 4.5 11H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm2 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg></span>
                     <span class="allstar-view-status-ribbon-label">Node</span>
                     <strong><?= $myNodeIsValid ? e($myNode) : '—' ?></strong>
                 </div>
                 <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-time">
-                    <span class="allstar-view-status-ribbon-label">Date &amp; Time</span>
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm.5 3v4h3v1h-4V4h1Z"/></svg></span>
+                    <span class="allstar-view-status-ribbon-label">Time</span>
                     <strong id="allstar-view-current-time">—</strong>
                 </div>
-                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-connections">
-                    <span class="allstar-view-status-ribbon-label">Live Connections</span>
-                    <strong id="allstar-view-direct-count">—</strong>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-cpu">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5 1h2v2h2V1h2v2h1.5A1.5 1.5 0 0 1 14 4.5V6h2v2h-2v2h2v2h-2v1.5A1.5 1.5 0 0 1 12.5 15H11v2H9v-2H7v2H5v-2H3.5A1.5 1.5 0 0 1 2 13.5V12H0v-2h2V8H0V6h2V4.5A1.5 1.5 0 0 1 3.5 3H5V1Zm-.5 4A.5.5 0 0 0 4 5.5v5a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5v-5a.5.5 0 0 0-.5-.5h-7Z"/></svg></span>
+                    <span class="allstar-view-status-ribbon-label">CPU</span>
+                    <strong id="allstar-view-system-cpu">—</strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-ram">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 4h12v7H2V4Zm1 1v5h10V5H3Zm1 7h1v2H4v-2Zm3 0h2v2H7v-2Zm4 0h1v2h-1v-2Z"/></svg></span>
+                    <span class="allstar-view-status-ribbon-label">RAM</span>
+                    <strong id="allstar-view-system-ram">—</strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-temp">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M9 9.59V3.5a2 2 0 1 0-4 0v6.09a3.5 3.5 0 1 0 4 0ZM7 2.5a1 1 0 1 1 2 0V10l.29.21a2.5 2.5 0 1 1-2.58 0L7 10V2.5Z"/></svg></span>
+                    <span class="allstar-view-status-ribbon-label">Temp</span>
+                    <strong id="allstar-view-system-temp">—</strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-uptime">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1a6 6 0 1 1 0 12A6 6 0 0 1 8 2Zm-.5 2h1v4.29l2.5 2.5-.71.71L7.5 8.71V4Z"/></svg></span>
+                    <span class="allstar-view-status-ribbon-label">Uptime</span>
+                    <strong id="allstar-view-system-uptime">—</strong>
+                </div>
+                <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-disk">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm0 2v6h12V5H2Zm2 4.25a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm2.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/></svg></span>
+                    <span class="allstar-view-status-ribbon-label">/</span>
+                    <strong id="allstar-view-system-disk">—</strong>
                 </div>
                 <div class="allstar-view-status-ribbon-item allstar-view-status-ribbon-downstream">
+                    <span class="allstar-view-status-ribbon-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 14 13 9h-3V4H6v5H3l5 5ZM3 2h10v1H3V2Z"/></svg></span>
                     <span class="allstar-view-status-ribbon-label">Downstream</span>
                     <strong id="allstar-view-downstream-count">—</strong>
                     <span id="allstar-view-downstream-note" class="allstar-view-status-ribbon-note">Loading tree</span>

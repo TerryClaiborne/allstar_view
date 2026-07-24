@@ -57,107 +57,155 @@ html[data-theme="light"] .allstar-view-local-node-pill:focus-visible {
 }
 
 .allstar-view-status-ribbon {
+    position: relative;
     width: 100%;
-    padding: 5px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-main);
-    border-radius: 15px;
-    box-shadow: var(--shadow);
-    scrollbar-color: rgba(216, 108, 242, 0.72) rgba(255, 255, 255, 0.05);
-    scrollbar-width: thin;
-}
-
-.allstar-view-status-ribbon::-webkit-scrollbar {
-    height: 7px;
-}
-
-.allstar-view-status-ribbon::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 999px;
-}
-
-.allstar-view-status-ribbon::-webkit-scrollbar-thumb {
-    background: rgba(216, 108, 242, 0.72);
-    border-radius: 999px;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(28, 10, 44, 0.96), rgba(18, 7, 30, 0.96));
+    border: 1px solid rgba(170, 92, 255, 0.38);
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
 .allstar-view-status-ribbon-track {
-    display: grid;
-    grid-template-columns: minmax(126px, 0.75fr) minmax(250px, 1.45fr) minmax(200px, 1.05fr) minmax(315px, 1.75fr);
-    gap: 6px;
-    width: 100%;
-    min-width: 900px;
-}
-
-.allstar-view-status-ribbon-item {
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    min-width: 0;
-    min-height: 38px;
-    padding: 7px 13px 7px 19px;
-    background: var(--bg-status);
-    border: 1px solid var(--border-soft);
-    border-radius: 10px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    gap: 3px;
+    min-width: 100%;
+    padding-bottom: 1px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(178, 123, 255, 0.55) transparent;
+}
+
+.allstar-view-status-ribbon-track::-webkit-scrollbar {
+    height: 5px;
+}
+
+.allstar-view-status-ribbon-track::-webkit-scrollbar-thumb {
+    background: rgba(178, 123, 255, 0.55);
+    border-radius: 999px;
+}
+
+.allstar-view-status-ribbon-item {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    min-height: 24px;
+    max-width: none;
+    padding: 0 7px;
+    color: #f7f0ff;
+    background: linear-gradient(180deg, rgba(44, 17, 72, 0.96), rgba(24, 9, 38, 0.98));
+    border: 1px solid rgba(161, 118, 221, 0.40);
+    border-radius: 6px;
+    box-shadow: none;
+    font-size: 11px;
+    line-height: 1;
     white-space: nowrap;
 }
 
-.allstar-view-status-ribbon-item::before {
-    position: absolute;
-    left: 8px;
-    width: 4px;
-    height: 18px;
-    border-radius: 999px;
-    content: "";
+.allstar-view-status-ribbon-icon {
+    display: inline-flex;
+    flex: 0 0 12px;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    color: #8de4ff;
 }
 
-.allstar-view-status-ribbon-node::before { background: #5ca9ff; }
-.allstar-view-status-ribbon-time::before { background: #ffd75c; }
-.allstar-view-status-ribbon-connections::before { background: #ff785f; }
-.allstar-view-status-ribbon-downstream::before { background: #d86cf2; }
+.allstar-view-status-ribbon-icon svg {
+    display: block;
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
 
 .allstar-view-status-ribbon-label {
-    color: var(--text-soft);
-    font-size: 0.66rem;
-    font-weight: 800;
-    letter-spacing: 0.045em;
-    text-transform: uppercase;
+    color: #f4a6ff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
 }
 
-.allstar-view-status-ribbon-item strong {
+.allstar-view-status-ribbon-item strong,
+.allstar-view-status-ribbon-note {
     color: #ffffff;
-    font-size: 0.92rem;
-    font-weight: 900;
+    font-size: 11px;
+    font-weight: 600;
     line-height: 1;
 }
 
 .allstar-view-status-ribbon-note {
-    min-width: 0;
+    max-width: 220px;
     overflow: hidden;
-    color: var(--text-dim);
-    font-size: 0.7rem;
-    font-weight: 700;
     text-overflow: ellipsis;
 }
 
+.allstar-view-status-ribbon-temp .allstar-view-status-ribbon-icon {
+    color: #ffb16c;
+}
+
+.allstar-view-status-ribbon-disk .allstar-view-status-ribbon-icon {
+    color: #d7c6ff;
+}
+
+.allstar-view-status-ribbon-downstream .allstar-view-status-ribbon-icon {
+    color: #7bc2ff;
+}
+
 html[data-theme="light"] .allstar-view-status-ribbon {
-    background: #ffffff;
-    scrollbar-color: rgba(152, 76, 171, 0.68) rgba(35, 67, 96, 0.08);
+    background: linear-gradient(180deg, #f8fbff, #eaf2fa);
+    border-color: #b2c7dc;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.84) inset;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-track {
+    scrollbar-color: rgba(96, 123, 160, 0.58) transparent;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-track::-webkit-scrollbar-thumb {
+    background: rgba(96, 123, 160, 0.58);
 }
 
 html[data-theme="light"] .allstar-view-status-ribbon-item {
-    background: #f7f9fc;
-    border-color: #bfd0de;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    color: #173a58;
+    background: linear-gradient(180deg, #ffffff, #edf4fb);
+    border-color: #b6c9de;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96), 0 1px 2px rgba(72, 101, 132, 0.08);
 }
 
-html[data-theme="light"] .allstar-view-status-ribbon-item strong {
-    color: #18334f;
+html[data-theme="light"] .allstar-view-status-ribbon-label {
+    color: #7a3e92;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-item strong,
+html[data-theme="light"] .allstar-view-status-ribbon-note {
+    color: #173a58;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-icon {
+    color: #1678a8;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-temp .allstar-view-status-ribbon-icon {
+    color: #b85a16;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-disk .allstar-view-status-ribbon-icon {
+    color: #6e55a2;
+}
+
+html[data-theme="light"] .allstar-view-status-ribbon-downstream .allstar-view-status-ribbon-icon {
+    color: #266fa7;
 }
 
 .allstar-view-grid {
@@ -457,14 +505,14 @@ html[data-theme="light"] .activity-disconnect {
 
 @media (max-width: 760px) {
     .allstar-view-status-ribbon-track {
-        min-width: 860px;
-        grid-template-columns: 130px 245px 195px 290px;
+        justify-content: flex-start;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
     }
 
     .allstar-view-status-ribbon-item {
-        min-height: 38px;
-        padding-top: 6px;
-        padding-bottom: 6px;
+        min-height: 24px;
+        padding: 3px 7px;
     }
 
     .allstar-view-detail-preview {

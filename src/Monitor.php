@@ -32,7 +32,7 @@ final class Monitor
 
         if ($cached !== null && $this->cacheAgeSeconds($cachePath) < self::CACHE_TTL_SECONDS) {
             $cached['cache'] = ['hit' => true, 'stale' => false];
-            return $cached;
+            return $this->publicSnapshot($cached);
         }
 
         $lock = @fopen($lockPath, 'c');
@@ -40,18 +40,18 @@ final class Monitor
             @fclose($lock);
             if ($cached !== null) {
                 $cached['cache'] = ['hit' => true, 'stale' => true];
-                return $cached;
+                return $this->publicSnapshot($cached);
             }
         }
 
         try {
-            $snapshot = $this->collect();
+            $snapshot = $this->collect(is_array($cached) ? $cached : null);
             $snapshot['activity'] = !empty($snapshot['ok'])
                 ? $this->updateActivityState($root, $snapshot['connections'] ?? [], (string) ($snapshot['timestamp'] ?? gmdate('c')))
                 : $this->normalizeActivityPreview($this->loadActivityPreview($root));
             $snapshot['cache'] = ['hit' => false, 'stale' => false];
             $this->writeJsonFile($cachePath, $snapshot);
-            return $snapshot;
+            return $this->publicSnapshot($snapshot);
         } finally {
             if (is_resource($lock)) {
                 @flock($lock, LOCK_UN);
@@ -60,11 +60,20 @@ final class Monitor
         }
     }
 
-    private function collect(): array
+    private function publicSnapshot(array $snapshot): array
+    {
+        return $snapshot;
+    }
+
+    private function collect(?array $previousSnapshot = null): array
     {
         $started = microtime(true);
         $myNode = trim((string) $this->config->get('MYNODE', ''));
         $privateNode = trim((string) $this->config->get('DVSWITCH_NODE', ''));
+        $previousSystem = is_array($previousSnapshot['system'] ?? null)
+            ? $previousSnapshot['system']
+            : null;
+        $system = $this->collectSystemStats($previousSystem);
 
         if ($myNode === '' || preg_match('/^\d+$/', $myNode) !== 1) {
             return [
@@ -72,6 +81,7 @@ final class Monitor
                 'timestamp' => gmdate('c'),
                 'collection_ms' => 0,
                 'node' => $myNode,
+                'system' => $system,
                 'connections' => [],
                 'summary' => ['direct' => 0, 'keyed' => 0, 'hidden_private' => 0],
                 'warnings' => [],
@@ -122,6 +132,7 @@ final class Monitor
             'timestamp' => gmdate('c'),
             'collection_ms' => (int) round((microtime(true) - $started) * 1000),
             'node' => $myNode,
+            'system' => $system,
             'connections' => $connections,
             'summary' => [
                 'direct' => count($connections),
@@ -134,6 +145,277 @@ final class Monitor
                 'iax' => $iax['available'],
             ],
         ];
+    }
+
+    private function collectSystemStats(?array $previousSystem): array
+    {
+        $now = microtime(true);
+        $previousCollectedAt = (float) ($previousSystem['collected_at'] ?? 0.0);
+        if ($previousSystem !== null
+            && $previousCollectedAt > 0.0
+            && ($now - $previousCollectedAt) < 2.5
+            && isset(
+                $previousSystem['cpu_compact'],
+                $previousSystem['memory_compact'],
+                $previousSystem['temperature_compact'],
+                $previousSystem['uptime_compact'],
+                $previousSystem['root_compact']
+            )) {
+            return $previousSystem;
+        }
+
+        $cpu = $this->cpuUsage();
+        $memory = $this->memoryUsage();
+        $temperature = $this->temperature();
+        $uptime = $this->uptime();
+        $rootDisk = $this->diskUsage('/', '/');
+
+        return [
+            'collected_at' => $now,
+            'cpu_percent' => $cpu['percent'],
+            'cpu_compact' => $cpu['compact'],
+            'memory_used_bytes' => $memory['used'],
+            'memory_total_bytes' => $memory['total'],
+            'memory_compact' => $memory['compact'],
+            'temperature_c' => $temperature['c'],
+            'temperature_f' => $temperature['f'],
+            'temperature_compact' => $temperature['compact'],
+            'uptime_seconds' => $uptime['seconds'],
+            'uptime_compact' => $uptime['compact'],
+            'root_used_percent' => $rootDisk['percent'],
+            'root_compact' => $rootDisk['compact'],
+        ];
+    }
+
+    private function cpuUsage(): array
+    {
+        if (PHP_OS_FAMILY !== 'Linux' || !is_readable('/proc/stat')) {
+            return ['percent' => null, 'compact' => 'N/A'];
+        }
+
+        $sample = function (): ?array {
+            $text = $this->readText('/proc/stat');
+            if ($text === null) {
+                return null;
+            }
+
+            $firstLine = strtok($text, "\n");
+            if (!is_string($firstLine) || strpos($firstLine, 'cpu ') !== 0) {
+                return null;
+            }
+
+            $parts = preg_split('/\s+/', trim($firstLine));
+            if (!is_array($parts) || count($parts) < 8) {
+                return null;
+            }
+
+            $numbers = array_map('floatval', array_slice($parts, 1));
+            return [
+                'idle' => ($numbers[3] ?? 0.0) + ($numbers[4] ?? 0.0),
+                'total' => array_sum($numbers),
+            ];
+        };
+
+        $first = $sample();
+        usleep(200000);
+        $second = $sample();
+        if (!is_array($first) || !is_array($second)) {
+            return ['percent' => null, 'compact' => 'N/A'];
+        }
+
+        $usage = 0.0;
+        $totalDelta = $second['total'] - $first['total'];
+        $idleDelta = $second['idle'] - $first['idle'];
+        if ($totalDelta > 0) {
+            $usage = (1.0 - ($idleDelta / $totalDelta)) * 100.0;
+        }
+
+        $usage = max(0.0, min(100.0, $usage));
+        return [
+            'percent' => $usage,
+            'compact' => number_format($usage, 0) . '%',
+        ];
+    }
+
+    private function memoryUsage(): array
+    {
+        if (PHP_OS_FAMILY !== 'Linux' || !is_readable('/proc/meminfo')) {
+            return ['used' => 0.0, 'total' => 0.0, 'compact' => 'N/A'];
+        }
+
+        $lines = @file('/proc/meminfo', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $values = [];
+        if (is_array($lines)) {
+            foreach ($lines as $line) {
+                if (preg_match('/^([^:]+):\s+(\d+)/', $line, $match) === 1) {
+                    $values[$match[1]] = (float) $match[2] * 1024.0;
+                }
+            }
+        }
+
+        $total = $values['MemTotal'] ?? 0.0;
+        if ($total <= 0.0) {
+            return ['used' => 0.0, 'total' => 0.0, 'compact' => 'N/A'];
+        }
+
+        $available = $values['MemAvailable']
+            ?? (($values['MemFree'] ?? 0.0) + ($values['Buffers'] ?? 0.0) + ($values['Cached'] ?? 0.0));
+        $used = max(0.0, $total - $available);
+
+        return [
+            'used' => $used,
+            'total' => $total,
+            'compact' => $this->formatBinary($used, 2) . ' / ' . $this->formatBinary($total, 2),
+        ];
+    }
+
+    private function temperature(): array
+    {
+        $chosen = null;
+        foreach (glob('/sys/class/thermal/thermal_zone*/temp') ?: [] as $path) {
+            $rawText = $this->readText($path);
+            if ($rawText === null || !is_numeric($rawText)) {
+                continue;
+            }
+
+            $celsius = $this->temperatureCelsiusFromRaw((float) $rawText);
+            $fahrenheit = ($celsius * 9.0 / 5.0) + 32.0;
+            if ($chosen === null || $celsius > $chosen['c']) {
+                $chosen = ['c' => $celsius, 'f' => $fahrenheit];
+            }
+        }
+
+        if ($chosen === null) {
+            return ['c' => null, 'f' => null, 'compact' => 'N/A'];
+        }
+
+        return [
+            'c' => $chosen['c'],
+            'f' => $chosen['f'],
+            'compact' => number_format($chosen['f'], 1) . "\u{00B0}F / "
+                . number_format($chosen['c'], 2) . "\u{00B0}C",
+        ];
+    }
+
+    private function temperatureCelsiusFromRaw(float $raw): float
+    {
+        $candidates = $raw >= 1000.0 ? [$raw / 1000.0, $raw / 100.0] : [$raw];
+        foreach ($candidates as $candidate) {
+            if ($candidate >= 10.0 && $candidate <= 120.0) {
+                return $candidate;
+            }
+        }
+        return $candidates[0];
+    }
+
+    private function uptime(): array
+    {
+        if (PHP_OS_FAMILY !== 'Linux' || !is_readable('/proc/uptime')) {
+            return ['seconds' => 0, 'compact' => 'N/A'];
+        }
+
+        $raw = $this->readText('/proc/uptime');
+        $seconds = 0;
+        if ($raw !== null) {
+            $parts = preg_split('/\s+/', trim($raw));
+            if (is_array($parts) && isset($parts[0]) && is_numeric($parts[0])) {
+                $seconds = (int) floor((float) $parts[0]);
+            }
+        }
+        $seconds = max(0, $seconds);
+
+        $days = intdiv($seconds, 86400);
+        $hours = intdiv($seconds % 86400, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        if ($days > 0) {
+            $compact = sprintf('%dd %02dh', $days, $hours);
+        } elseif ($hours > 0) {
+            $compact = sprintf('%dh %02dm', $hours, $minutes);
+        } else {
+            $compact = sprintf('%d min', $minutes);
+        }
+
+        return ['seconds' => $seconds, 'compact' => $compact];
+    }
+
+    private function diskUsage(string $path, string $label): array
+    {
+        if (!file_exists($path)) {
+            return ['label' => $label, 'percent' => null, 'compact' => 'N/A'];
+        }
+
+        $output = $this->execCommand('df -kP ' . escapeshellarg($path) . ' 2>/dev/null');
+        if ($output === '') {
+            return ['label' => $label, 'percent' => null, 'compact' => 'N/A'];
+        }
+
+        $lines = preg_split('/\R+/', trim($output));
+        if (!is_array($lines) || count($lines) < 2) {
+            return ['label' => $label, 'percent' => null, 'compact' => 'N/A'];
+        }
+
+        $parts = preg_split('/\s+/', trim((string) $lines[1]), 6);
+        if (!is_array($parts) || count($parts) < 6) {
+            return ['label' => $label, 'percent' => null, 'compact' => 'N/A'];
+        }
+
+        $usePercent = (string) $parts[4];
+        return [
+            'label' => $label,
+            'percent' => is_numeric(rtrim($usePercent, '%')) ? (float) rtrim($usePercent, '%') : null,
+            'compact' => $usePercent,
+        ];
+    }
+
+    private function formatBinary(float $bytes, int $precision = 2): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $value = max(0.0, $bytes);
+        $unit = 0;
+        while ($value >= 1024.0 && $unit < count($units) - 1) {
+            $value /= 1024.0;
+            $unit++;
+        }
+
+        if ($value >= 100) {
+            $decimals = 0;
+        } elseif ($value >= 10) {
+            $decimals = min(1, $precision);
+        } else {
+            $decimals = $precision;
+        }
+
+        return number_format($value, $decimals) . ' ' . $units[$unit];
+    }
+
+    private function readText(string $path): ?string
+    {
+        if (!is_readable($path)) {
+            return null;
+        }
+        $text = @file_get_contents($path);
+        return $text === false ? null : trim($text);
+    }
+
+    private function execCommand(string $command): string
+    {
+        if (function_exists('shell_exec')) {
+            $output = @shell_exec($command);
+            if (is_string($output)) {
+                return trim($output);
+            }
+        }
+
+        if (function_exists('exec')) {
+            $lines = [];
+            $status = 0;
+            @exec($command, $lines, $status);
+            if ($lines !== []) {
+                return trim(implode("\n", $lines));
+            }
+        }
+
+        return '';
     }
 
     private function fetchAmiLinks(string $myNode): array

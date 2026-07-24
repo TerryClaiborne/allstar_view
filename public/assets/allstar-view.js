@@ -18,7 +18,6 @@
 
     const elements = {
         connections: document.getElementById('allstar-view-connections'),
-        directCount: document.getElementById('allstar-view-direct-count'),
         downstream: document.getElementById('allstar-view-downstream'),
         downstreamExpanded: document.getElementById('allstar-view-downstream-expanded'),
         downstreamWindow: document.getElementById('allstar-view-downstream-window'),
@@ -36,6 +35,11 @@
             echolink: Array.from(document.querySelectorAll('[data-downstream-filter-count="echolink"]')),
         },
         currentTime: document.getElementById('allstar-view-current-time'),
+        systemCpu: document.getElementById('allstar-view-system-cpu'),
+        systemRam: document.getElementById('allstar-view-system-ram'),
+        systemTemp: document.getElementById('allstar-view-system-temp'),
+        systemUptime: document.getElementById('allstar-view-system-uptime'),
+        systemDisk: document.getElementById('allstar-view-system-disk'),
         detailNode: document.getElementById('allstar-view-detail-node'),
         detailCall: document.getElementById('allstar-view-detail-call'),
         detailPath: document.getElementById('allstar-view-detail-path'),
@@ -257,16 +261,39 @@
             return '—';
         }
 
-        const day = date.toLocaleDateString([], {
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-        });
-        const time = date.toLocaleTimeString([], {
-            hour: 'numeric',
-            minute: '2-digit',
-        });
-        return `${day} · ${time}`;
+        const pad = (number) => String(number).padStart(2, '0');
+        const month = pad(date.getMonth() + 1);
+        const day = pad(date.getDate());
+        const year = date.getFullYear();
+        const hours = date.getHours();
+        const displayHour = pad(hours % 12 || 12);
+        const minutes = pad(date.getMinutes());
+        const period = hours >= 12 ? 'PM' : 'AM';
+        return `${month}-${day}-${year} ${displayHour}:${minutes} ${period}`;
+    }
+
+    function renderSystemStatus(system) {
+        const data = system && typeof system === 'object' ? system : {};
+        const compact = (key) => {
+            const value = String(data[key] ?? '').trim();
+            return value !== '' ? value : '—';
+        };
+
+        if (elements.systemCpu) {
+            elements.systemCpu.textContent = compact('cpu_compact');
+        }
+        if (elements.systemRam) {
+            elements.systemRam.textContent = compact('memory_compact');
+        }
+        if (elements.systemTemp) {
+            elements.systemTemp.textContent = compact('temperature_compact');
+        }
+        if (elements.systemUptime) {
+            elements.systemUptime.textContent = compact('uptime_compact');
+        }
+        if (elements.systemDisk) {
+            elements.systemDisk.textContent = compact('root_compact');
+        }
     }
 
     function activityEventKey(event) {
@@ -1337,10 +1364,7 @@
         updateDownstreamSummary();
         renderDetails(selectedItem());
 
-        if (elements.directCount) {
-            elements.directCount.textContent = String(summary.direct ?? connections.length);
-        }
-
+        renderSystemStatus(snapshot.system);
         scheduleEchoLinkLookup();
     }
 
@@ -1496,7 +1520,7 @@
     function startClock() {
         window.clearInterval(state.clockTimer);
         updateCurrentTime();
-        state.clockTimer = window.setInterval(updateCurrentTime, 1000);
+        state.clockTimer = window.setInterval(updateCurrentTime, 60000);
     }
 
     function schedule() {
