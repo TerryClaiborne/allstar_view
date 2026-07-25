@@ -154,19 +154,29 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
         <section class="allstar-view-grid">
             <article class="card allstar-view-card allstar-view-card-connections">
                 <div class="card-header">
-                    <span>Current Connections</span>
-                    <?php if ($myNodeIsValid): ?>
-                        <a
-                            class="allstar-view-local-node-pill"
-                            href="<?= e($myNodeStatsUrl) ?>"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Open AllStarLink Stats for node <?= e($myNode) ?>"
-                            aria-label="Open AllStarLink Stats for node <?= e($myNode) ?>"
-                        >Node <?= e($myNode) ?></a>
-                    <?php else: ?>
-                        <span class="meta-line">Node not set</span>
-                    <?php endif; ?>
+                    <span class="allstar-view-panel-title">Current Connections <strong class="allstar-view-panel-count" data-connections-count>0</strong></span>
+                    <div class="allstar-view-panel-header-actions">
+                        <?php if ($myNodeIsValid): ?>
+                            <a
+                                class="allstar-view-local-node-pill"
+                                href="<?= e($myNodeStatsUrl) ?>"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open AllStarLink Stats for node <?= e($myNode) ?>"
+                                aria-label="Open AllStarLink Stats for node <?= e($myNode) ?>"
+                            >Node <?= e($myNode) ?></a>
+                        <?php else: ?>
+                            <span class="meta-line">Node not set</span>
+                        <?php endif; ?>
+                        <button
+                            type="button"
+                            class="allstar-view-panel-expand"
+                            id="allstar-view-connections-expand"
+                            aria-controls="allstar-view-connections-window"
+                            aria-expanded="false"
+                            title="Open a movable expanded Current Connections window"
+                        ><span aria-hidden="true">&#10530;</span>Expand</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="allstar-view-legend" aria-label="Connection colors">
@@ -197,14 +207,14 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
             <article class="card allstar-view-card allstar-view-card-downstream">
                 <div class="card-header">
                     <span>Downstream Nodes</span>
-                    <div class="allstar-view-downstream-header-actions">
+                    <div class="allstar-view-panel-header-actions">
                         <span class="meta-line allstar-view-downstream-flow-label">
                             <span class="allstar-view-downstream-flow-label-desktop">Direct-node groups &middot; Color-coded flow</span>
                             <span class="allstar-view-downstream-flow-label-mobile">Color-coded flow</span>
                         </span>
                         <button
                             type="button"
-                            class="allstar-view-downstream-expand"
+                            class="allstar-view-panel-expand"
                             id="allstar-view-downstream-expand"
                             aria-controls="allstar-view-downstream-window"
                             aria-expanded="false"
@@ -233,7 +243,17 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
             <article class="card allstar-view-card allstar-view-card-activity">
                 <div class="card-header">
                     <span>Live Activity</span>
-                    <span class="meta-line">Newest first · saved locally</span>
+                    <div class="allstar-view-panel-header-actions">
+                        <span class="meta-line">Newest first · saved locally</span>
+                        <button
+                            type="button"
+                            class="allstar-view-panel-expand"
+                            id="allstar-view-activity-expand"
+                            aria-controls="allstar-view-activity-window"
+                            aria-expanded="false"
+                            title="Open a movable expanded Live Activity window"
+                        ><span aria-hidden="true">&#10530;</span>Expand</button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="allstar-view-activity-toolbar">
@@ -284,21 +304,22 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
     </main>
 
     <section
-        class="allstar-view-downstream-window"
-        id="allstar-view-downstream-window"
+        class="allstar-view-floating-window allstar-view-connections-window"
+        id="allstar-view-connections-window"
+        data-floating-window="connections"
         role="dialog"
         aria-modal="false"
-        aria-labelledby="allstar-view-downstream-window-title"
+        aria-labelledby="allstar-view-connections-window-title"
         tabindex="-1"
         hidden
     >
-        <div class="allstar-view-downstream-window-header" id="allstar-view-downstream-window-handle">
-            <div class="allstar-view-downstream-window-heading">
-                <strong id="allstar-view-downstream-window-title">Downstream Nodes</strong>
-                <span>Direct-node groups &middot; Color-coded flow</span>
+        <div class="allstar-view-floating-window-header" id="allstar-view-connections-window-handle">
+            <div class="allstar-view-floating-window-heading">
+                <strong id="allstar-view-connections-window-title">Current Connections <span class="allstar-view-panel-count" data-connections-count>0</span></strong>
+                <span>Local connections · keyed stations stay first</span>
             </div>
             <span
-                class="allstar-view-downstream-window-move-cue"
+                class="allstar-view-floating-window-move-cue"
                 role="img"
                 aria-label="Hold down the mouse button to drag and move the window"
                 title="Hold down the mouse button to drag and move the window"
@@ -309,13 +330,58 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
             </span>
             <button
                 type="button"
-                class="allstar-view-downstream-window-close"
+                class="allstar-view-floating-window-close"
+                id="allstar-view-connections-window-close"
+                aria-label="Close expanded Current Connections window"
+                title="Close"
+            >&times;</button>
+        </div>
+        <div class="allstar-view-floating-window-body">
+            <div id="allstar-view-connections-expanded" class="allstar-view-connection-list allstar-view-scroll-panel allstar-view-floating-window-list" aria-live="polite" aria-busy="true" tabindex="0">
+                <div class="allstar-view-empty">
+                    <span class="allstar-view-empty-icon" aria-hidden="true">&#8644;</span>
+                    <strong>Loading local connections…</strong>
+                    <p>The expanded window uses the same connection data already loaded by the page.</p>
+                </div>
+            </div>
+            <div class="allstar-view-floating-window-hint">Click any row to update Node Details. Use the lower-right corner to resize.</div>
+        </div>
+    </section>
+
+    <section
+        class="allstar-view-floating-window allstar-view-downstream-window"
+        id="allstar-view-downstream-window"
+        data-floating-window="downstream"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="allstar-view-downstream-window-title"
+        tabindex="-1"
+        hidden
+    >
+        <div class="allstar-view-floating-window-header" id="allstar-view-downstream-window-handle">
+            <div class="allstar-view-floating-window-heading">
+                <strong id="allstar-view-downstream-window-title">Downstream Nodes</strong>
+                <span>Direct-node groups &middot; Color-coded flow</span>
+            </div>
+            <span
+                class="allstar-view-floating-window-move-cue"
+                role="img"
+                aria-label="Hold down the mouse button to drag and move the window"
+                title="Hold down the mouse button to drag and move the window"
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 2v20M2 12h20M8.5 5.5 12 2l3.5 3.5M8.5 18.5 12 22l3.5-3.5M5.5 8.5 2 12l3.5 3.5M18.5 8.5 22 12l-3.5 3.5" />
+                </svg>
+            </span>
+            <button
+                type="button"
+                class="allstar-view-floating-window-close"
                 id="allstar-view-downstream-window-close"
                 aria-label="Close expanded Downstream Nodes window"
                 title="Close"
             >&times;</button>
         </div>
-        <div class="allstar-view-downstream-window-body">
+        <div class="allstar-view-floating-window-body">
             <div class="allstar-view-downstream-filters allstar-view-downstream-window-filters" role="group" aria-label="Filter expanded downstream connections">
                 <button type="button" class="allstar-view-downstream-filter is-active" data-downstream-filter="all" aria-pressed="true">All <strong data-downstream-filter-count="all">0</strong></button>
                 <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="nodes" aria-pressed="false">Nodes <strong data-downstream-filter-count="nodes">0</strong></button>
@@ -323,14 +389,65 @@ $allStarViewJsVersion = substr((string) @hash_file('sha256', $root . '/public/as
                 <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="clients" aria-pressed="false">Web/Clients <strong data-downstream-filter-count="clients">0</strong></button>
                 <button type="button" class="allstar-view-downstream-filter" data-downstream-filter="echolink" aria-pressed="false">EchoLink <strong data-downstream-filter-count="echolink">0</strong></button>
             </div>
-            <div id="allstar-view-downstream-expanded" class="allstar-view-downstream-list allstar-view-scroll-panel allstar-view-downstream-window-list" aria-live="polite" aria-busy="true" tabindex="0">
+            <div id="allstar-view-downstream-expanded" class="allstar-view-downstream-list allstar-view-scroll-panel allstar-view-floating-window-list" aria-live="polite" aria-busy="true" tabindex="0">
                 <div class="allstar-view-empty allstar-view-empty-compact">
                     <span class="allstar-view-empty-icon" aria-hidden="true">&#9670;</span>
                     <strong>Loading cached downstream tree…</strong>
                     <p>The expanded window uses the same downstream data already loaded by the page.</p>
                 </div>
             </div>
-            <div class="allstar-view-downstream-window-hint">Click any row to update Node Details. Use the lower-right corner to resize.</div>
+            <div class="allstar-view-floating-window-hint">Click any row to update Node Details. Use the lower-right corner to resize.</div>
+        </div>
+    </section>
+
+    <section
+        class="allstar-view-floating-window allstar-view-activity-window"
+        id="allstar-view-activity-window"
+        data-floating-window="activity"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="allstar-view-activity-window-title"
+        tabindex="-1"
+        hidden
+    >
+        <div class="allstar-view-floating-window-header" id="allstar-view-activity-window-handle">
+            <div class="allstar-view-floating-window-heading">
+                <strong id="allstar-view-activity-window-title">Live Activity</strong>
+                <span>Newest first · saved locally</span>
+            </div>
+            <span
+                class="allstar-view-floating-window-move-cue"
+                role="img"
+                aria-label="Hold down the mouse button to drag and move the window"
+                title="Hold down the mouse button to drag and move the window"
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 2v20M2 12h20M8.5 5.5 12 2l3.5 3.5M8.5 18.5 12 22l3.5-3.5M5.5 8.5 2 12l3.5 3.5M18.5 8.5 22 12l-3.5 3.5" />
+                </svg>
+            </span>
+            <button
+                type="button"
+                class="allstar-view-floating-window-close"
+                id="allstar-view-activity-window-close"
+                aria-label="Close expanded Live Activity window"
+                title="Close"
+            >&times;</button>
+        </div>
+        <div class="allstar-view-floating-window-body">
+            <div class="allstar-view-activity-legend allstar-view-floating-window-legend" aria-label="Activity colors">
+                <span class="activity-key">Key</span>
+                <span class="activity-unkey">Unkey</span>
+                <span class="activity-connect">Connect</span>
+                <span class="activity-disconnect">Disconnect</span>
+            </div>
+            <div id="allstar-view-activity-expanded" class="allstar-view-activity-list allstar-view-scroll-panel allstar-view-floating-window-list" aria-live="polite" tabindex="0">
+                <div class="allstar-view-empty allstar-view-empty-compact">
+                    <span class="allstar-view-empty-icon" aria-hidden="true">&#9889;</span>
+                    <strong>Watching live changes</strong>
+                    <p>The expanded window uses the same retained activity already loaded by the page.</p>
+                </div>
+            </div>
+            <div class="allstar-view-floating-window-hint">Click any row to update Node Details. Use the lower-right corner to resize.</div>
         </div>
     </section>
 </div>

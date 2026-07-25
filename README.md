@@ -42,7 +42,7 @@ AllStar View can display:
 - live Connect, Key, Unkey, and Disconnect activity
 - grouped downstream trees for each directly connected node
 - color-coded downstream branches that make multi-level paths easier to follow
-- a movable, resizable expanded Downstream Nodes window on desktop
+- movable, resizable expanded Current Connections, Downstream Nodes, and Live Activity windows on desktop
 - private nodes beneath the connection path they belong to
 - full clickable connection paths
 - node and callsign details
@@ -66,21 +66,21 @@ The Downstream Nodes panel includes filters for:
 
 Each filter shows the matching live count.
 
-Clicking a direct connection brings that connection’s downstream group into view. Clicking a downstream row opens its available details.
+Clicking a direct connection brings that connection's downstream group into view. Clicking a downstream row opens its available details.
 
-On desktop, use **Expand** to open a taller, scrollable Downstream Nodes window. Hold down the mouse button on the move control to drag it, and use the lower-right corner to resize it. The normal and expanded lists stay synchronized, and the color-coded branch lines make nested paths easier to follow on desktop and cellphone.
+On desktop, **Current Connections**, **Downstream Nodes**, and **Live Activity** each include **Expand**. Their floating windows can be moved, resized, scrolled, opened together, and layered over one another while staying synchronized with the main panels. On cellphone, Current Connections stays compact and scrolls internally when the list grows.
 
 ---
 
 ## Local Node in Downstream Flow
 
-When another downstream node reports the configured local node, AllStar View may show that local node in the downstream path. It will not recursively scan through the local node, which prevents loops while preserving the visible connection flow.
+When another downstream node reports the configured local node, AllStar View may show that local node in the downstream path and attach its other known local direct connections beneath it. It does not remotely rescan the local node, which prevents loops while preserving the visible connection flow.
 
 ---
 
 ## Faster Updates Between Local Nodes
 
-When directly connected nodes both run AllStar View and can reach each other, each node can use the other node’s read-only local status for faster Web/Phone, EchoLink, and direct-node updates.
+When directly connected nodes both run AllStar View and can reach each other, each node can use the other node's read-only local status for faster Web/Phone, EchoLink, and direct-node updates.
 
 If the peer status is not available, AllStar View continues with normal AllStar Stats scanning.
 
@@ -328,7 +328,7 @@ The installer provides:
 - Apache protection for private source, runtime, log, and cache directories
 - a narrowly restricted read-only Asterisk helper
 - source files that are not writable by the web server
-- writable access limited to AllStar View’s own bounded runtime directories
+- writable access limited to AllStar View's own bounded runtime directories
 - optional password-protected web login
 - preservation of existing configuration during updates
 

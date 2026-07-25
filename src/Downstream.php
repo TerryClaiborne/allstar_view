@@ -701,6 +701,7 @@ final class Downstream
     private function overlayPeerRootRows(array $display, array $snapshots, string $localNode): array
     {
         $parents = [];
+        $cachedAsl = [];
         foreach ($display as $item) {
             if (!is_array($item) || strtolower((string) ($item['kind'] ?? '')) !== 'asl') {
                 continue;
@@ -710,6 +711,7 @@ final class Downstream
             $parentNode = $this->digits((string) ($item['parent_node'] ?? ''));
             if ($directNode !== '' && $node !== '' && $parentNode !== '') {
                 $parents[$directNode][$node] = $parentNode;
+                $cachedAsl[$directNode][$node] = $item;
             }
         }
 
@@ -739,9 +741,21 @@ final class Downstream
                     }
 
                     $liveAsl[$directNode][$node] = true;
-                    $callsign = trim((string) ($connection['callsign'] ?? ''));
-                    $description = trim((string) ($connection['description'] ?? ''));
-                    $location = trim((string) ($connection['location'] ?? ''));
+                    $cached = is_array($cachedAsl[$directNode][$node] ?? null)
+                        ? $cachedAsl[$directNode][$node]
+                        : [];
+                    $callsign = trim((string) ($cached['callsign'] ?? ''));
+                    if ($callsign === '') {
+                        $callsign = trim((string) ($connection['callsign'] ?? ''));
+                    }
+                    $description = trim((string) ($cached['description'] ?? ''));
+                    if ($description === '') {
+                        $description = trim((string) ($connection['description'] ?? ''));
+                    }
+                    $location = trim((string) ($cached['location'] ?? ''));
+                    if ($location === '') {
+                        $location = trim((string) ($connection['location'] ?? ''));
+                    }
                     $nodeNumber = (int) $node;
                     $isPrivate = ($nodeNumber >= 1000 && $nodeNumber <= 1999)
                         || ($callsign === '' && $description === '' && $location === '');
@@ -765,7 +779,7 @@ final class Downstream
                         'depth' => 1,
                         'is_private' => $isPrivate,
                         'stats_url' => $isPrivate ? '' : 'https://stats.allstarlink.org/stats/' . rawurlencode($node),
-                        'qrz_url' => $isPrivate ? '' : (string) ($connection['qrz_url'] ?? ''),
+                        'qrz_url' => $isPrivate ? '' : (string) ($cached['qrz_url'] ?? ($connection['qrz_url'] ?? '')),
                         'remote_reported' => true,
                     ];
                     continue;
@@ -846,6 +860,83 @@ final class Downstream
         return $result;
     }
 
+    private function overlayLocalNodeBranches(array $display, array $direct, string $localNode): array
+    {
+        $parents = [];
+        $localRows = [];
+        foreach ($display as $item) {
+            if (!is_array($item) || ($item['kind'] ?? '') !== 'asl') {
+                continue;
+            }
+
+            $directNode = $this->digits((string) ($item['direct_node'] ?? ''));
+            $node = $this->digits((string) ($item['node'] ?? ''));
+            $parentNode = $this->digits((string) ($item['parent_node'] ?? ''));
+            if ($directNode !== '' && $node !== '' && $parentNode !== '') {
+                $parents[$directNode][$node] = $parentNode;
+            }
+            if ($node === $localNode) {
+                $localRows[] = $item;
+            }
+        }
+
+        if ($localRows === []) {
+            return $display;
+        }
+
+        $map = [];
+        foreach ($display as $item) {
+            if (is_array($item)) {
+                $this->addWorkingNode($map, $item);
+            }
+        }
+
+        foreach ($localRows as $localRow) {
+            $directNode = $this->digits((string) ($localRow['direct_node'] ?? ''));
+            $ancestors = [$localNode => true];
+            for ($node = $localNode; $node !== '';) {
+                $node = $this->digits((string) ($parents[$directNode][$node] ?? ''));
+                if ($node === '' || isset($ancestors[$node])) {
+                    break;
+                }
+                $ancestors[$node] = true;
+            }
+
+            foreach ($direct as $connection) {
+                if (!is_array($connection)) {
+                    continue;
+                }
+
+                $node = $this->digits((string) ($connection['node'] ?? ''));
+                if ($node === '' || isset($ancestors[$node])) {
+                    continue;
+                }
+
+                $mode = ($connection['mode'] ?? '') === 'local_monitor' ? 'local_monitor' : 'transceive';
+                $isPrivate = (int) $node >= 1000 && (int) $node <= 1999;
+                $this->addWorkingNode($map, array_merge($connection, [
+                    'key' => 'downstream-local-asl:' . $directNode . ':' . $localNode . ':' . $node,
+                    'kind' => 'asl',
+                    'source' => $isPrivate ? 'Private Node' : 'AllStarLink',
+                    'description' => $isPrivate ? 'Private Node' : (string) ($connection['description'] ?? ''),
+                    'mode' => $mode,
+                    'mode_label' => $mode === 'local_monitor' ? 'Local Monitor' : 'Transceive',
+                    'direct_node' => $directNode,
+                    'parent_node' => $localNode,
+                    'depth' => max(1, (int) ($localRow['depth'] ?? 1)) + 1,
+                    'is_private' => $isPrivate,
+                    'stats_url' => $isPrivate ? '' : (string) ($connection['stats_url'] ?? ''),
+                    'qrz_url' => $isPrivate ? '' : (string) ($connection['qrz_url'] ?? ''),
+                    'local_reported' => true,
+                ]));
+            }
+        }
+
+        $result = array_values($map);
+        $this->sortNodes($result);
+        return $result;
+    }
+
     private function rootAslChild(array $item, string $directNode, array $parents): string
     {
         $kind = strtolower((string) ($item['kind'] ?? ''));
@@ -909,6 +1000,9 @@ final class Downstream
         }
 
         $direct = array_values(array_filter($state['direct'] ?? [], 'is_array'));
+        if ($localNode !== '' && $direct !== []) {
+            $display = $this->overlayLocalNodeBranches($display, $direct, $localNode);
+        }
         $pending = $scan !== null ? count($scan['queue'] ?? []) : 0;
         $updatedAt = $state['display_updated_at'] ?? null;
         $updatedTs = strtotime((string) $updatedAt);

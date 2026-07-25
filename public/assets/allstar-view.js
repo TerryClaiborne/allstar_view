@@ -10,7 +10,7 @@
     const downstreamEndpoint = String(page.dataset.downstreamEndpoint || '').trim();
     const echoLinkEndpoint = String(page.dataset.echolinkEndpoint || '').trim();
     const mobileActivityMedia = window.matchMedia('(max-width: 760px)');
-    const desktopDownstreamMedia = window.matchMedia('(min-width: 761px)');
+    const desktopFloatingMedia = window.matchMedia('(min-width: 761px)');
     const MOBILE_ACTIVITY_LIMIT = 8;
     if (!localEndpoint) {
         return;
@@ -18,6 +18,12 @@
 
     const elements = {
         connections: document.getElementById('allstar-view-connections'),
+        connectionsExpanded: document.getElementById('allstar-view-connections-expanded'),
+        connectionsCounts: Array.from(document.querySelectorAll('[data-connections-count]')),
+        connectionsWindow: document.getElementById('allstar-view-connections-window'),
+        connectionsWindowHandle: document.getElementById('allstar-view-connections-window-handle'),
+        connectionsWindowClose: document.getElementById('allstar-view-connections-window-close'),
+        connectionsExpand: document.getElementById('allstar-view-connections-expand'),
         downstream: document.getElementById('allstar-view-downstream'),
         downstreamExpanded: document.getElementById('allstar-view-downstream-expanded'),
         downstreamWindow: document.getElementById('allstar-view-downstream-window'),
@@ -48,7 +54,12 @@
         detailLinks: document.getElementById('allstar-view-detail-links'),
         detailQrz: document.getElementById('allstar-view-detail-qrz'),
         activity: document.getElementById('allstar-view-activity'),
+        activityExpanded: document.getElementById('allstar-view-activity-expanded'),
         activityToggle: document.getElementById('allstar-view-activity-toggle'),
+        activityWindow: document.getElementById('allstar-view-activity-window'),
+        activityWindowHandle: document.getElementById('allstar-view-activity-window-handle'),
+        activityWindowClose: document.getElementById('allstar-view-activity-window-close'),
+        activityExpand: document.getElementById('allstar-view-activity-expand'),
     };
 
     const state = {
@@ -81,18 +92,26 @@
         echoLinkEntries: {},
     };
 
+    function connectionLists() {
+        return [elements.connections, elements.connectionsExpanded].filter(Boolean);
+    }
+
+    function activityLists() {
+        return [elements.activity, elements.activityExpanded].filter(Boolean);
+    }
+
     function downstreamLists() {
         return [elements.downstream, elements.downstreamExpanded].filter(Boolean);
     }
 
-    function syncDownstreamSelection(sourceList, attribute, key) {
+    function syncListSelection(lists, sourceList, attribute, key) {
         const selectedKey = String(key || '');
         if (!selectedKey) {
             return;
         }
 
         window.requestAnimationFrame(() => {
-            for (const list of downstreamLists()) {
+            for (const list of lists) {
                 if (list === sourceList || list.clientHeight === 0) {
                     continue;
                 }
@@ -120,29 +139,48 @@
         });
     }
 
-    function setDownstreamWindowOpen(open, returnFocus = false) {
-        if (!elements.downstreamWindow || !elements.downstreamExpand) {
-            return;
-        }
-
-        const shouldOpen = Boolean(open) && desktopDownstreamMedia.matches;
-        elements.downstreamWindow.hidden = !shouldOpen;
-        elements.downstreamExpand.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-        elements.downstreamExpand.classList.toggle('is-active', shouldOpen);
-
-        if (shouldOpen) {
-            window.requestAnimationFrame(() => {
-                constrainDownstreamWindow();
-                elements.downstreamWindowClose?.focus({ preventScroll: true });
-            });
-        } else if (returnFocus && desktopDownstreamMedia.matches) {
-            elements.downstreamExpand.focus({ preventScroll: true });
-        }
+    function syncDownstreamSelection(sourceList, attribute, key) {
+        syncListSelection(downstreamLists(), sourceList, attribute, key);
     }
 
-    function constrainDownstreamWindow() {
-        const panel = elements.downstreamWindow;
-        if (!panel || panel.hidden || !desktopDownstreamMedia.matches) {
+    const floatingWindows = [
+        {
+            key: 'connections',
+            panel: elements.connectionsWindow,
+            handle: elements.connectionsWindowHandle,
+            close: elements.connectionsWindowClose,
+            expand: elements.connectionsExpand,
+        },
+        {
+            key: 'downstream',
+            panel: elements.downstreamWindow,
+            handle: elements.downstreamWindowHandle,
+            close: elements.downstreamWindowClose,
+            expand: elements.downstreamExpand,
+        },
+        {
+            key: 'activity',
+            panel: elements.activityWindow,
+            handle: elements.activityWindowHandle,
+            close: elements.activityWindowClose,
+            expand: elements.activityExpand,
+        },
+    ].filter((item) => item.panel && item.handle && item.close && item.expand);
+
+    let floatingWindowZ = 90;
+    let floatingWindowDrag = null;
+
+    function bringFloatingWindowToFront(config) {
+        if (!config?.panel) {
+            return;
+        }
+        floatingWindowZ += 1;
+        config.panel.style.zIndex = String(floatingWindowZ);
+    }
+
+    function constrainFloatingWindow(config) {
+        const panel = config?.panel;
+        if (!panel || panel.hidden || !desktopFloatingMedia.matches) {
             return;
         }
 
@@ -157,20 +195,41 @@
         panel.style.right = 'auto';
     }
 
-    let downstreamWindowDrag = null;
-
-    function beginDownstreamWindowDrag(event) {
-        const panel = elements.downstreamWindow;
-        const handle = elements.downstreamWindowHandle;
-        if (!panel || !handle || panel.hidden || event.button !== 0 || event.target.closest('button')) {
+    function setFloatingWindowOpen(config, open, returnFocus = false) {
+        if (!config?.panel || !config.expand) {
             return;
         }
 
+        const shouldOpen = Boolean(open) && desktopFloatingMedia.matches;
+        config.panel.hidden = !shouldOpen;
+        config.expand.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        config.expand.classList.toggle('is-active', shouldOpen);
+
+        if (shouldOpen) {
+            bringFloatingWindowToFront(config);
+            window.requestAnimationFrame(() => {
+                constrainFloatingWindow(config);
+                config.close?.focus({ preventScroll: true });
+            });
+        } else if (returnFocus && desktopFloatingMedia.matches) {
+            config.expand.focus({ preventScroll: true });
+        }
+    }
+
+    function beginFloatingWindowDrag(config, event) {
+        const panel = config?.panel;
+        const handle = config?.handle;
+        if (!panel || !handle || panel.hidden || event.button !== 0 || event.target.closest('button, a')) {
+            return;
+        }
+
+        bringFloatingWindowToFront(config);
         const rect = panel.getBoundingClientRect();
         panel.style.left = `${Math.round(rect.left)}px`;
         panel.style.top = `${Math.round(rect.top)}px`;
         panel.style.right = 'auto';
-        downstreamWindowDrag = {
+        floatingWindowDrag = {
+            config,
             pointerId: event.pointerId,
             offsetX: event.clientX - rect.left,
             offsetY: event.clientY - rect.top,
@@ -180,9 +239,10 @@
         event.preventDefault();
     }
 
-    function moveDownstreamWindow(event) {
-        const panel = elements.downstreamWindow;
-        if (!panel || !downstreamWindowDrag || event.pointerId !== downstreamWindowDrag.pointerId) {
+    function moveFloatingWindow(event) {
+        const drag = floatingWindowDrag;
+        const panel = drag?.config?.panel;
+        if (!panel || event.pointerId !== drag.pointerId) {
             return;
         }
 
@@ -190,52 +250,85 @@
         const margin = 8;
         const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
         const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
-        const left = Math.min(maxLeft, Math.max(margin, event.clientX - downstreamWindowDrag.offsetX));
-        const top = Math.min(maxTop, Math.max(margin, event.clientY - downstreamWindowDrag.offsetY));
+        const left = Math.min(maxLeft, Math.max(margin, event.clientX - drag.offsetX));
+        const top = Math.min(maxTop, Math.max(margin, event.clientY - drag.offsetY));
         panel.style.left = `${Math.round(left)}px`;
         panel.style.top = `${Math.round(top)}px`;
         event.preventDefault();
     }
 
-    function endDownstreamWindowDrag(event) {
-        const panel = elements.downstreamWindow;
-        const handle = elements.downstreamWindowHandle;
-        if (!downstreamWindowDrag || event.pointerId !== downstreamWindowDrag.pointerId) {
+    function endFloatingWindowDrag(event) {
+        const drag = floatingWindowDrag;
+        if (!drag || event.pointerId !== drag.pointerId) {
             return;
         }
 
-        handle?.releasePointerCapture?.(event.pointerId);
-        downstreamWindowDrag = null;
-        panel?.classList.remove('is-dragging');
-        constrainDownstreamWindow();
+        drag.config.handle?.releasePointerCapture?.(event.pointerId);
+        drag.config.panel?.classList.remove('is-dragging');
+        floatingWindowDrag = null;
+        constrainFloatingWindow(drag.config);
     }
 
-    elements.downstreamExpand?.addEventListener('click', () => {
-        setDownstreamWindowOpen(elements.downstreamWindow?.hidden !== false);
-    });
-    elements.downstreamWindowClose?.addEventListener('click', () => setDownstreamWindowOpen(false, true));
-    elements.downstreamWindowHandle?.addEventListener('pointerdown', beginDownstreamWindowDrag);
-    window.addEventListener('pointermove', moveDownstreamWindow);
-    window.addEventListener('pointerup', endDownstreamWindowDrag);
-    window.addEventListener('pointercancel', endDownstreamWindowDrag);
-    window.addEventListener('resize', constrainDownstreamWindow);
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && elements.downstreamWindow?.hidden === false) {
-            setDownstreamWindowOpen(false, true);
+    for (const config of floatingWindows) {
+        config.expand.addEventListener('click', () => {
+            setFloatingWindowOpen(config, config.panel.hidden !== false);
+        });
+        config.close.addEventListener('click', () => setFloatingWindowOpen(config, false, true));
+        config.handle.addEventListener('pointerdown', (event) => beginFloatingWindowDrag(config, event));
+        config.panel.addEventListener('pointerdown', () => bringFloatingWindowToFront(config));
+        config.panel.addEventListener('focusin', () => bringFloatingWindowToFront(config));
+    }
+
+    window.addEventListener('pointermove', moveFloatingWindow);
+    window.addEventListener('pointerup', endFloatingWindowDrag);
+    window.addEventListener('pointercancel', endFloatingWindowDrag);
+    window.addEventListener('resize', () => {
+        for (const config of floatingWindows) {
+            constrainFloatingWindow(config);
         }
     });
 
-    const handleDownstreamViewportChange = () => {
-        if (!desktopDownstreamMedia.matches) {
-            setDownstreamWindowOpen(false);
-        } else {
-            constrainDownstreamWindow();
+    let floatingWindowResizeObserver = null;
+    if (typeof ResizeObserver === 'function') {
+        floatingWindowResizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const config = floatingWindows.find((item) => item.panel === entry.target);
+                if (config) {
+                    window.requestAnimationFrame(() => constrainFloatingWindow(config));
+                }
+            }
+        });
+        for (const config of floatingWindows) {
+            floatingWindowResizeObserver.observe(config.panel);
+        }
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        const openWindows = floatingWindows
+            .filter((item) => item.panel.hidden === false)
+            .sort((a, b) => Number(b.panel.style.zIndex || 90) - Number(a.panel.style.zIndex || 90));
+        if (openWindows[0]) {
+            setFloatingWindowOpen(openWindows[0], false, true);
+        }
+    });
+
+    const handleFloatingViewportChange = () => {
+        for (const config of floatingWindows) {
+            if (!desktopFloatingMedia.matches) {
+                setFloatingWindowOpen(config, false);
+            } else {
+                constrainFloatingWindow(config);
+            }
         }
     };
-    if (typeof desktopDownstreamMedia.addEventListener === 'function') {
-        desktopDownstreamMedia.addEventListener('change', handleDownstreamViewportChange);
-    } else if (typeof desktopDownstreamMedia.addListener === 'function') {
-        desktopDownstreamMedia.addListener(handleDownstreamViewportChange);
+    if (typeof desktopFloatingMedia.addEventListener === 'function') {
+        desktopFloatingMedia.addEventListener('change', handleFloatingViewportChange);
+    } else if (typeof desktopFloatingMedia.addListener === 'function') {
+        desktopFloatingMedia.addListener(handleFloatingViewportChange);
     }
 
     function escapeHtml(value) {
@@ -562,35 +655,8 @@
         return null;
     }
 
-    function renderConnectionEmpty(message, detail = '') {
-        if (!elements.connections) {
-            return;
-        }
-        elements.connections.innerHTML = `
-            <div class="allstar-view-empty">
-                <span class="allstar-view-empty-icon" aria-hidden="true">&#8644;</span>
-                <strong>${escapeHtml(message)}</strong>
-                ${detail ? `<p>${escapeHtml(detail)}</p>` : ''}
-            </div>`;
-    }
-
-    function renderConnections(connections) {
-        if (!elements.connections) {
-            return;
-        }
-
-        elements.connections.setAttribute('aria-busy', 'false');
-        if (!connections.length) {
-            renderConnectionEmpty('No direct connections detected', 'The local Asterisk snapshot is active and will update automatically.');
-            if (state.selectedType === 'current') {
-                state.selectedKey = '';
-                state.selectedType = '';
-                renderDetails(null);
-            }
-            return;
-        }
-
-        elements.connections.innerHTML = connections.map((item) => {
+    function connectionMarkup(connections) {
+        return connections.map((item) => {
             const selected = state.selectedType === 'current' && item.key === state.selectedKey ? ' is-selected' : '';
             const keyed = item.keyed ? ' is-keyed' : '';
             const secondary = String(item.kind || '') === 'asl'
@@ -613,20 +679,86 @@
                     </span>
                 </button>`;
         }).join('');
+    }
 
-        for (const row of elements.connections.querySelectorAll('[data-connection-key]')) {
-            row.addEventListener('click', () => {
-                const item = state.connections.find((connection) => connection.key === String(row.dataset.connectionKey || ''));
-                if (item) {
-                    if (item.kind === 'asl') {
-                        prioritizeDownstream(item.node);
-                    } else if (isRemoteWebPhoneClient(item)) {
-                        prioritizeRemoteClients();
-                    }
-                    selectItem(item, 'current');
-                }
-            });
+    function updateConnectionCount(connections) {
+        for (const count of elements.connectionsCounts) {
+            count.textContent = String(connections.length);
         }
+    }
+
+    function renderConnectionEmpty(message, detail = '') {
+        const markup = `
+            <div class="allstar-view-empty">
+                <span class="allstar-view-empty-icon" aria-hidden="true">&#8644;</span>
+                <strong>${escapeHtml(message)}</strong>
+                ${detail ? `<p>${escapeHtml(detail)}</p>` : ''}
+            </div>`;
+
+        for (const list of connectionLists()) {
+            list.innerHTML = markup;
+            list.setAttribute('aria-busy', 'false');
+        }
+        updateConnectionCount([]);
+    }
+
+    function renderConnections(connections) {
+        const lists = connectionLists();
+        if (!lists.length) {
+            return;
+        }
+
+        for (const list of lists) {
+            list.setAttribute('aria-busy', 'false');
+        }
+
+        if (!connections.length) {
+            renderConnectionEmpty('No direct connections detected', 'The local Asterisk snapshot is active and will update automatically.');
+            if (state.selectedType === 'current') {
+                state.selectedKey = '';
+                state.selectedType = '';
+                renderDetails(null);
+            }
+            return;
+        }
+
+        updateConnectionCount(connections);
+
+        const scrollPositions = new Map(lists.map((list) => [list, list.scrollTop]));
+        if (elements.connections) {
+            elements.connections.innerHTML = connectionMarkup(connections);
+        }
+        if (elements.connectionsExpanded) {
+            elements.connectionsExpanded.innerHTML = connectionMarkup(connections);
+        }
+        for (const list of lists) {
+            list.scrollTop = scrollPositions.get(list) || 0;
+        }
+    }
+
+    function handleConnectionClick(container, event) {
+        const row = event.target.closest('[data-connection-key]');
+        if (!row || !container.contains(row)) {
+            return;
+        }
+
+        const connectionKey = String(row.dataset.connectionKey || '');
+        const item = state.connections.find((connection) => connection.key === connectionKey);
+        if (!item) {
+            return;
+        }
+
+        if (item.kind === 'asl') {
+            prioritizeDownstream(item.node);
+        } else if (isRemoteWebPhoneClient(item)) {
+            prioritizeRemoteClients();
+        }
+        selectItem(item, 'current');
+        syncListSelection(connectionLists(), container, 'data-connection-key', connectionKey);
+    }
+
+    for (const list of connectionLists()) {
+        list.addEventListener('click', (event) => handleConnectionClick(list, event));
     }
 
     function activityClass(type) {
@@ -699,35 +831,8 @@
 
     }
 
-    function renderActivity() {
-        if (!elements.activity) {
-            return;
-        }
-
-        const signature = activityRenderSignature();
-        if (signature === state.activityRenderSignature) {
-            return;
-        }
-        state.activityRenderSignature = signature;
-
-        updateActivityActions();
-
-        if (!state.activity.length) {
-            elements.activity.innerHTML = `
-                <div class="allstar-view-empty allstar-view-empty-compact">
-                    <span class="allstar-view-empty-icon" aria-hidden="true">&#9889;</span>
-                    <strong>No recorded activity yet</strong>
-                    <p>Connect, disconnect, key, and unkey changes will be retained here when they occur.</p>
-                </div>`;
-            elements.activity.scrollTop = 0;
-            return;
-        }
-
-        const visibleActivity = mobileActivityMedia.matches && !state.activityExpanded
-            ? state.activity.slice(0, MOBILE_ACTIVITY_LIMIT)
-            : state.activity;
-
-        elements.activity.innerHTML = visibleActivity.map((event) => {
+    function activityMarkup(activity) {
+        return activity.map((event) => {
             const identity = activityIdentity(event);
             const activityKind = String(event.kind || '');
             const sourceLabel = activityKind === 'asl'
@@ -749,17 +854,67 @@
         }).join('');
     }
 
-    elements.activity?.addEventListener('click', (event) => {
-        const row = event.target.closest('[data-activity-id]');
-        if (!row || !elements.activity.contains(row)) {
+    function renderActivity() {
+        const lists = activityLists();
+        if (!lists.length) {
             return;
         }
+
+        const signature = activityRenderSignature();
+        if (signature === state.activityRenderSignature) {
+            return;
+        }
+        state.activityRenderSignature = signature;
+
+        updateActivityActions();
+
+        if (!state.activity.length) {
+            const markup = `
+                <div class="allstar-view-empty allstar-view-empty-compact">
+                    <span class="allstar-view-empty-icon" aria-hidden="true">&#9889;</span>
+                    <strong>No recorded activity yet</strong>
+                    <p>Connect, disconnect, key, and unkey changes will be retained here when they occur.</p>
+                </div>`;
+            for (const list of lists) {
+                list.innerHTML = markup;
+                list.scrollTop = 0;
+            }
+            return;
+        }
+
+        const visibleActivity = mobileActivityMedia.matches && !state.activityExpanded
+            ? state.activity.slice(0, MOBILE_ACTIVITY_LIMIT)
+            : state.activity;
+        const scrollPositions = new Map(lists.map((list) => [list, list.scrollTop]));
+
+        if (elements.activity) {
+            elements.activity.innerHTML = activityMarkup(visibleActivity);
+        }
+        if (elements.activityExpanded) {
+            elements.activityExpanded.innerHTML = activityMarkup(state.activity);
+        }
+        for (const list of lists) {
+            list.scrollTop = scrollPositions.get(list) || 0;
+        }
+    }
+
+    function handleActivityClick(container, event) {
+        const row = event.target.closest('[data-activity-id]');
+        if (!row || !container.contains(row)) {
+            return;
+        }
+
         const eventKey = String(row.dataset.activityId || '');
         const activity = state.activity.find((item) => activityEventKey(item) === eventKey);
         if (activity) {
             selectActivity(activity);
+            syncListSelection(activityLists(), container, 'data-activity-id', eventKey);
         }
-    });
+    }
+
+    for (const list of activityLists()) {
+        list.addEventListener('click', (event) => handleActivityClick(list, event));
+    }
 
     elements.activityToggle?.addEventListener('click', () => {
         state.activityExpanded = !state.activityExpanded;
@@ -768,9 +923,7 @@
     });
 
     const handleActivityViewportChange = () => {
-        if (!mobileActivityMedia.matches) {
-            state.activityExpanded = false;
-        }
+        state.activityExpanded = false;
         state.activityRenderSignature = '';
         renderActivity();
     };
