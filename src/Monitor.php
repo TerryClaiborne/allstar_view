@@ -938,12 +938,20 @@ final class Monitor
         $mode = strtolower(trim((string) ($link['link_mode'] ?? '')));
         $mode = $mode === 'local_monitor' ? 'local_monitor' : ($mode === 'transceive' ? 'transceive' : 'connected');
         $modeLabel = $mode === 'local_monitor' ? 'Local Monitor' : ($mode === 'transceive' ? 'Transceive' : 'Connected');
-        $keyIdentity = $clientType === 'web_phone' && $qrzCallsign !== ''
-            ? strtolower($qrzCallsign)
-            : strtolower(($kind === 'echo' ? $reportedNode : $node) . ':' . trim((string) ($link['iax_channel'] ?? '')));
+        $iaxChannel = trim((string) ($link['iax_channel'] ?? ''));
+        if ($this->validIaxChannel($iaxChannel)) {
+            $connectionKey = 'iax-channel:' . strtolower($iaxChannel);
+        } else {
+            $keyIdentity = $clientType === 'web_phone' && $qrzCallsign !== ''
+                ? strtolower($qrzCallsign)
+                : strtolower(($kind === 'echo' ? $reportedNode : $node) . ':' . $iaxChannel);
+            $connectionKey = $clientType === 'web_phone'
+                ? 'client:web_phone:' . $keyIdentity
+                : $kind . ':' . ($kind === 'echo' ? $reportedNode : $node) . ':' . $iaxChannel;
+        }
 
         return [
-            'key' => $clientType === 'web_phone' ? 'client:web_phone:' . $keyIdentity : $kind . ':' . ($kind === 'echo' ? $reportedNode : $node) . ':' . trim((string) ($link['iax_channel'] ?? '')),
+            'key' => $connectionKey,
             'kind' => $kind,
             'source' => $source,
             'client_type' => $clientType,
@@ -1284,6 +1292,34 @@ final class Monitor
     private function reconcilePreviousWebPhoneState(array $previous, array $current): array
     {
         foreach ($current as $currentKey => $currentConnection) {
+            $currentChannel = trim((string) ($currentConnection['channel'] ?? ''));
+            if ($this->validIaxChannel($currentChannel) && !isset($previous[$currentKey])) {
+                $channelMatchedKey = null;
+                foreach ($previous as $previousKey => $previousConnection) {
+                    if (!is_array($previousConnection)) {
+                        continue;
+                    }
+
+                    $previousChannel = trim((string) ($previousConnection['channel'] ?? ''));
+                    if ($this->validIaxChannel($previousChannel)
+                        && strcasecmp($previousChannel, $currentChannel) === 0) {
+                        $channelMatchedKey = (string) $previousKey;
+                        break;
+                    }
+                }
+
+                if ($channelMatchedKey !== null) {
+                    $old = $previous[$channelMatchedKey];
+                    $previous[$currentKey] = array_merge($currentConnection, [
+                        'keyed' => !empty($old['keyed']),
+                        'keyed_at' => isset($old['keyed_at']) && is_numeric($old['keyed_at'])
+                            ? (int) $old['keyed_at']
+                            : null,
+                    ]);
+                    unset($previous[$channelMatchedKey]);
+                }
+            }
+
             if (strtolower(trim((string) ($currentConnection['client_type'] ?? ''))) !== 'web_phone') {
                 continue;
             }

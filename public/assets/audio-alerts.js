@@ -28,6 +28,11 @@
         const clientType = String(item?.client_type || '').trim().toLowerCase();
         const node = String(item?.node || '').trim();
         const source = String(item?.source || '').trim().toLowerCase();
+        const channel = String(item?.channel || '').trim();
+
+        if (/^IAX2\/[A-Za-z0-9_.:@-]{1,96}$/i.test(channel)) {
+            return `iax-channel:${channel.toLowerCase()}`;
+        }
 
         // A Web/Phone session can briefly change from CALLSIGN to CALLSIGN-P.
         // Keep one stable identity so that refinement is not a second event.
@@ -207,7 +212,12 @@
             initialized = true;
             return;
         }
-        if (nextSignature === observedSignature) return;
+        if (nextSignature === observedSignature) {
+            for (const [key, item] of latest.entries()) {
+                if (stable.has(key)) stable.set(key, item);
+            }
+            return;
+        }
 
         observedSignature = nextSignature;
         window.clearTimeout(settleTimer);
