@@ -2,7 +2,7 @@
 
 ## Standalone AllStarLink Monitoring
 
-AllStar View is a standalone, read-only web monitor for AllStarLink 3 / `app_rpt` systems.
+AllStar View is a standalone, read-only web monitor for AllStarLink 3 / `app_rpt` systems, tested on Debian 13.
 
 It provides a clear view of current connections, live activity, and downstream node paths without connecting or disconnecting nodes, changing link modes, restarting Asterisk, or altering node operation.
 
